@@ -1,0 +1,289 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Carrieder | Pro Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              barker: {
+                dark: '#050505',      // Deepest Black
+                panel: '#0F0F0F',     // Off-Black Panel
+                gold: '#E53E3E',      // Professional Red (Stranger Things Red)
+                golddim: '#742A2A',   // Dim Red
+                charcoal: '#1A1A1A',
+                cream: '#F3F4F6',     // Gray-100
+                holo: '#FCA5A5',      // Light Red/Pink accent
+              }
+            },
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              display: ['Inter', 'sans-serif'],
+              mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+            },
+            animation: {
+              'fade-in-up': 'fadeInUp 0.6s ease-out forwards',
+              'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'flicker': 'flicker 3s infinite',
+              'scan-vertical': 'scanVertical 3s linear infinite',
+              'holo-float': 'holoFloat 6s ease-in-out infinite',
+            },
+            keyframes: {
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px) scale(0.98)' },
+                '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+              },
+              flicker: {
+                '0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100%': { opacity: '0.99' },
+                '20%, 21.999%, 63%, 63.999%, 65%, 69.999%': { opacity: '0.4' },
+              },
+              scanVertical: {
+                '0%': { top: '0%' },
+                '100%': { top: '100%' },
+              },
+              holoFloat: {
+                '0%, 100%': { transform: 'translateY(0) rotateX(2deg)' },
+                '50%': { transform: 'translateY(-15px) rotateX(5deg)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #050505;
+        color: #F3F4F6;
+        background-image: linear-gradient(to top, #1a0505 0%, #050505 40%);
+        overflow-x: hidden;
+      }
+      
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; }
+      ::-webkit-scrollbar-track { background: #050505; }
+      ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+      ::-webkit-scrollbar-thumb:hover { background: #E53E3E; }
+
+      /* Sleek Card Styling with Red Glow Hover */
+      .barker-card {
+        background: rgba(20, 20, 20, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .barker-card:hover {
+        border-color: rgba(229, 62, 62, 0.5);
+        box-shadow: 0 0 25px rgba(229, 62, 62, 0.15);
+        transform: translateY(-2px);
+      }
+
+      /* Buttons */
+      .btn-barker {
+        background: #E53E3E;
+        color: white;
+        font-weight: 600;
+        font-size: 0.875rem;
+        letter-spacing: 0.025em;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+        text-transform: none;
+        position: relative;
+        overflow: hidden;
+      }
+      .btn-barker:hover {
+        background: #C53030;
+        box-shadow: 0 0 20px rgba(229, 62, 62, 0.6);
+      }
+      .btn-barker:disabled {
+        background: #333;
+        color: #666;
+        box-shadow: none;
+        cursor: not-allowed;
+      }
+
+      /* Stranger Things / 80s Retro Scanlines */
+      .scanlines {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+          to bottom,
+          rgba(255,255,255,0),
+          rgba(255,255,255,0) 50%,
+          rgba(0,0,0,0.2) 50%,
+          rgba(0,0,0,0.2)
+        );
+        background-size: 100% 4px;
+        pointer-events: none;
+        z-index: 9999;
+        opacity: 0.15;
+      }
+      
+      .vignette {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(20,0,0,0.6) 100%);
+        pointer-events: none;
+        z-index: 9998;
+      }
+
+      /* Glitch Effect Class */
+      .glitch-text {
+        position: relative;
+      }
+      .glitch-text::before,
+      .glitch-text::after {
+        content: attr(data-text);
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0.8;
+      }
+      .glitch-text::before {
+        color: #0ff;
+        z-index: -1;
+        animation: glitch-anim-1 3s infinite linear alternate-reverse;
+      }
+      .glitch-text::after {
+        color: #f00;
+        z-index: -2;
+        animation: glitch-anim-2 2s infinite linear alternate-reverse;
+      }
+
+      @keyframes glitch-anim-1 {
+        0% { clip-path: inset(20% 0 80% 0); transform: translate(-2px, 1px); }
+        20% { clip-path: inset(60% 0 10% 0); transform: translate(2px, -1px); }
+        40% { clip-path: inset(40% 0 50% 0); transform: translate(-2px, 2px); }
+        60% { clip-path: inset(80% 0 5% 0); transform: translate(2px, -2px); }
+        80% { clip-path: inset(10% 0 60% 0); transform: translate(-1px, 1px); }
+        100% { clip-path: inset(50% 0 30% 0); transform: translate(1px, -1px); }
+      }
+      @keyframes glitch-anim-2 {
+        0% { clip-path: inset(10% 0 60% 0); transform: translate(2px, -1px); }
+        20% { clip-path: inset(80% 0 5% 0); transform: translate(-2px, 2px); }
+        40% { clip-path: inset(30% 0 20% 0); transform: translate(2px, 1px); }
+        60% { clip-path: inset(10% 0 80% 0); transform: translate(-1px, -2px); }
+        80% { clip-path: inset(40% 0 10% 0); transform: translate(2px, 2px); }
+        100% { clip-path: inset(70% 0 20% 0); transform: translate(-2px, -1px); }
+      }
+
+      /* 4D Scroll Entry Animation Class */
+      .reveal-on-scroll {
+        opacity: 0;
+        transform: translateY(30px) perspective(1000px) rotateX(10deg);
+        transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
+        will-change: opacity, transform;
+      }
+      .reveal-on-scroll.is-visible {
+        opacity: 1;
+        transform: translateY(0) perspective(1000px) rotateX(0deg);
+      }
+
+      /* Inputs - Standardized */
+      input, textarea, select {
+        border-radius: 8px;
+        background-color: rgba(0,0,0,0.3) !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
+        color: #fff !important;
+        font-family: 'Inter', sans-serif !important;
+        font-size: 0.875rem !important; /* text-sm */
+      }
+      input:focus, textarea:focus, select:focus {
+        border-color: #E53E3E !important;
+        box-shadow: 0 0 10px rgba(229, 62, 62, 0.3) !important;
+        outline: none !important;
+      }
+      
+      /* Resume Bullets Specific */
+      .resume-bullets ul {
+        list-style-type: disc;
+        margin-left: 1.5rem;
+      }
+      .resume-bullets li {
+        margin-bottom: 0.25rem;
+      }
+
+      /* Marquee */
+      @keyframes marquee {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(-50%); }
+      }
+      .animate-marquee {
+        animation: marquee 40s linear infinite;
+      }
+
+      /* PRINT STYLES FOR RESUME BUILDER */
+      @media print {
+        @page {
+          margin: 0;
+          size: auto;
+        }
+        body {
+          background-color: white !important;
+          color: black !important;
+          background-image: none !important;
+        }
+        /* Hide all UI elements */
+        aside, .scanlines, .vignette, .print\:hidden, nav, header {
+          display: none !important;
+        }
+        main {
+            height: auto !important;
+            overflow: visible !important;
+            padding: 0 !important;
+        }
+        /* Ensure resume looks perfect */
+        .bg-white {
+            box-shadow: none !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+        }
+        /* Override dark inputs */
+        input, textarea {
+            display: none !important;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react-markdown": "https://esm.sh/react-markdown@^10.1.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "react": "https://esm.sh/react@^19.2.4",
+    "recharts": "https://esm.sh/recharts@^3.7.0",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
+    "mammoth": "https://esm.sh/mammoth@1.6.0",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
