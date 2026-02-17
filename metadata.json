@@ -1,5 +1,8 @@
 {
   "name": "Carrieder",
   "description": "An intelligent job application optimization suite powered by Gemini. Optimize resumes, generate assets, and get real-time company intelligence.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
 }

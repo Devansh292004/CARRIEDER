@@ -1,4 +1,5 @@
 
+// ... existing types ...
 export interface ChatMessage {
   role: 'user' | 'model';
   content: string;
@@ -17,6 +18,8 @@ export interface MapLocation {
 
 export enum AppRoute {
   DASHBOARD = 'dashboard',
+  THE_ARCHITECT = 'the-architect',
+  PROOF_OF_WORK = 'proof-of-work', 
   RESUME_FORGE = 'resume-forge',
   CAREER_PATHFINDER = 'career-pathfinder',
   APPLICATION_TRACKER = 'application-tracker',
@@ -32,7 +35,49 @@ export enum AppRoute {
   CHRONO_LAPSE = 'chrono-lapse',
   THE_TRIBUNAL = 'the-tribunal',
   RESONANCE_ENGINE = 'resonance-engine',
+  NEGOTIATION_COACH = 'negotiation-coach',
+  SYSTEM_ARCHITECT = 'system-architect',
   SETTINGS = 'settings',
+}
+
+// NEW: Career Stages for Dynamic UI
+export type CareerStage = 'preparation' | 'discovery' | 'outreach' | 'application' | 'interview' | 'negotiation';
+
+// THE ARCHITECT TYPES
+export interface ProjectArtifact {
+    id: string;
+    title: string;
+    tagline: string;
+    description: string;
+    techStack: string[];
+    features: string[];
+    readmeContent: string;
+    fileTree: { name: string; type: 'file' | 'folder'; children?: any[] }[];
+    codeFiles: { name: string; language: string; content: string }[];
+    architectureDiagram: string; // Mermaid
+}
+
+// ... existing interfaces (WorkChallenge, WorkSubmission) ...
+export interface WorkChallenge {
+    id: string;
+    role: string;
+    company: string;
+    title: string;
+    context: string;
+    taskDescription: string;
+    deliverableFormat: string;
+    timeLimit: string;
+    difficulty: 'Easy' | 'Medium' | 'Hard' | 'Expert';
+}
+
+export interface WorkSubmission {
+    challengeId: string;
+    userSolution: string;
+    grade: number; // 0-100
+    feedback: string;
+    strengths: string[];
+    weaknesses: string[];
+    emailHook: string; // The text to paste in an email
 }
 
 export interface FileData {
@@ -50,6 +95,7 @@ export interface UserProfile {
   title: string;
   clearanceLevel?: 'L1' | 'L2' | 'L3' | 'L4' | 'L5';
   atsScore?: number;
+  currentStage: CareerStage; // NEW
 }
 
 export interface SavedDocument {
@@ -249,6 +295,55 @@ export interface ResonanceAnalysis {
     coreIdentity: string;
     opportunities: ResonanceOpportunity[];
     marketEntropy: number; // Volatility factor
+}
+
+// Networking CRM Types
+export interface ContactInteraction {
+    id: string;
+    date: string;
+    type: 'Email' | 'LinkedIn' | 'Call' | 'Coffee' | 'Event';
+    notes: string;
+}
+
+export interface NetworkContact {
+    id: string;
+    name: string;
+    company: string;
+    role: string;
+    status: 'Cold' | 'Warm' | 'Hot' | 'Advocate';
+    lastContactDate: string;
+    interactions: ContactInteraction[];
+    email?: string;
+    linkedIn?: string;
+    notes?: string;
+}
+
+// Negotiation Coach Types
+export interface NegotiationAnalysis {
+    marketRateAnalysis: string;
+    leverageAssessment: string;
+    strategy: string;
+    recommendedCounter: {
+        base: string;
+        equity: string;
+        signOn: string;
+    };
+    script: string;
+}
+
+export interface WarRoomAnalysis {
+    summary: string;
+    keyConsiderations: string[];
+    diagramCode: string; // Mermaid code
+    diagramType: string;
+}
+
+// Interview Coach Types
+export interface BehaviorMetrics {
+    confidence: number;
+    eyeContact: 'Good' | 'Fair' | 'Poor';
+    posture: 'Open' | 'Closed' | 'Neutral';
+    feedback: string;
 }
 
 declare global {

@@ -1,5 +1,5 @@
 
-import { FileData, JobOpportunity, ChatMessage, GroundingSource, CompanyDossier, DeepResumeAnalysis, KeyPerson, OutreachSequence, LinkedInProfileStrategy, LinkedInPost, CareerRoadmap, MapLocation, FutureSimulation, TribunalSession, ResonanceAnalysis } from '../types';
+import { FileData, JobOpportunity, ChatMessage, GroundingSource, CompanyDossier, DeepResumeAnalysis, KeyPerson, OutreachSequence, LinkedInProfileStrategy, LinkedInPost, CareerRoadmap, MapLocation, FutureSimulation, TribunalSession, ResonanceAnalysis, NegotiationAnalysis, WarRoomAnalysis, WorkChallenge, WorkSubmission, ProjectArtifact, BehaviorMetrics } from '../types';
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
 // --- KEY ROTATION SYSTEM (AKRS) ---
@@ -18,6 +18,13 @@ export const getCurrentApiKey = () => {
 };
 
 export const ensureApiKeySelected = async () => {
+  // 1. Check for manually entered key (Local Host Priority)
+  if (localStorage.getItem('carrieder_custom_api_key')) return true;
+  
+  // 2. Check environment key
+  if (process.env.API_KEY) return true;
+
+  // 3. Fallback to AI Studio Wrapper (Only if no local key exists)
   if (typeof window !== 'undefined' && window.aistudio) {
     const hasKey = await window.aistudio.hasSelectedApiKey();
     if (!hasKey) {
@@ -59,20 +66,42 @@ const getAi = () => {
     return new GoogleGenAI({ apiKey: key });
 };
 
+// Robust Error Checker for Google GenAI
+const isRateLimitError = (error: any): boolean => {
+    return error.status === 429 || 
+           error.status === 503 || 
+           error.response?.status === 429 ||
+           error.error?.code === 429 ||
+           error.error?.status === 'RESOURCE_EXHAUSTED' ||
+           (typeof error.message === 'string' && (
+               error.message.includes('429') || 
+               error.message.includes('403') ||
+               error.message.includes('RESOURCE_EXHAUSTED') ||
+               error.message.includes('quota')
+           ));
+};
+
 const executeWithRetry = async <T>(
     operation: (ai: GoogleGenAI) => Promise<T>
 ): Promise<T> => {
     const customKey = localStorage.getItem('carrieder_custom_api_key');
+    
+    // If using custom key, we don't rotate, but we do basic retry backoff
     if (customKey) {
         try {
             const ai = getAi();
             return await operation(ai);
         } catch (error: any) {
+            if (isRateLimitError(error)) {
+                // One simple retry for custom keys after delay
+                await new Promise(r => setTimeout(r, 2000));
+                return await operation(getAi());
+            }
             throw error; 
         }
     }
 
-    const maxRetries = API_KEYS.length + 1;
+    const maxRetries = API_KEYS.length > 1 ? API_KEYS.length + 1 : 2;
     let attempts = 0;
 
     while (attempts < maxRetries) {
@@ -80,41 +109,48 @@ const executeWithRetry = async <T>(
             const ai = getAi();
             return await operation(ai);
         } catch (error: any) {
-            const isRateLimit = error.status === 429 || 
-                              error.status === 503 || 
-                              error.response?.status === 429 ||
-                              error.error?.code === 429 ||
-                              error.error?.status === 'RESOURCE_EXHAUSTED' ||
-                              error.message?.includes('429') || 
-                              error.message?.includes('403') ||
-                              error.message?.includes('RESOURCE_EXHAUSTED') ||
-                              error.message?.includes('quota');
-            
-            if (isRateLimit && API_KEYS.length > 1) {
-                console.warn(`Key #${currentKeyIndex + 1} depleted. Engaging auto-rotation...`);
-                exhaustedKeys.add(currentKeyIndex);
-                rotateKey();
+            if (isRateLimitError(error)) {
+                console.warn(`Key #${currentKeyIndex + 1} depleted/rate-limited. Engaging mitigation...`);
+                
+                if (API_KEYS.length > 1) {
+                    exhaustedKeys.add(currentKeyIndex);
+                    rotateKey();
+                } else {
+                    // Single key setup: Wait exponentially
+                    const delay = 2000 * Math.pow(1.5, attempts);
+                    console.warn(`Single key setup. Waiting ${delay}ms...`);
+                    await new Promise(r => setTimeout(r, delay));
+                }
+                
                 attempts++;
-                await new Promise(r => setTimeout(r, 500));
             } else {
                 throw error;
             }
         }
     }
-    throw new Error("System Failure: All API Power Cells Depleted.");
+    throw new Error("System Failure: All API Quotas Exhausted. Please check billing or try again later.");
 };
 
 // Helper: Robust JSON Cleaner
 const cleanJson = (text: string) => {
     if (!text) return "{}";
     
-    // 1. Try to extract from Markdown code blocks first
-    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-    if (codeBlockMatch && codeBlockMatch[1]) {
-        text = codeBlockMatch[1];
+    // 1. Prioritize explicit JSON blocks
+    const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
+    if (jsonBlockMatch && jsonBlockMatch[1]) {
+        return jsonBlockMatch[1];
     }
 
-    // 2. Find the first '{' and the last '}' to strip conversational preludes/postscripts
+    // 2. If no "json" tag, looks for the first code block that STARTS with a valid JSON char
+    const genericBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/i);
+    if (genericBlockMatch && genericBlockMatch[1]) {
+        const content = genericBlockMatch[1].trim();
+        if (content.startsWith('{') || content.startsWith('[')) {
+            return content;
+        }
+    }
+
+    // 3. Fallback: Find the first '{' and the last '}' 
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
 
@@ -122,7 +158,145 @@ const cleanJson = (text: string) => {
         return text.substring(firstBrace, lastBrace + 1);
     }
 
-    return text; // Return original if no braces found (likely to fail parse, but prevents substring errors)
+    return text; 
+};
+
+// --- THE ARCHITECT (MAGNUM OPUS GENERATOR) ---
+
+export const generateMagnumOpus = async (resumeData: FileData | string, jobDescription: string): Promise<ProjectArtifact> => {
+    const instruction = `
+        Act as a Senior Principal Software Architect.
+        
+        GOAL: Create a "Bridge Project" (Magnum Opus) for a candidate.
+        The project must:
+        1. Use the tech stack required in the TARGET JOB but missing or weak in the RESUME.
+        2. Be impressive enough to put on a resume immediately.
+        3. Look like it was built by a passionate human.
+        
+        TARGET JOB DESCRIPTION: ${jobDescription.substring(0, 2000)}
+        
+        RETURN JSON ONLY matching this schema.
+        {
+            "id": "project-1",
+            "title": "Name of the Project",
+            "tagline": "A punchy one-liner description",
+            "description": "Short executive summary of what this is.",
+            "techStack": ["React", "Go", "Kafka", "etc"],
+            "features": ["Feature 1", "Feature 2"],
+            "readmeContent": "# Title\\n\\n## Why I built this... (Make it sound personal and strategic)",
+            "fileTree": [
+                { "name": "src", "type": "folder", "children": [{ "name": "App.tsx", "type": "file" }] }
+            ],
+            "codeFiles": [
+                { "name": "src/App.tsx", "language": "typescript", "content": "..." },
+                { "name": "backend/main.go", "language": "go", "content": "..." }
+            ],
+            "architectureDiagram": "graph TD\\n  subgraph User Layer\\n    Client[Client App]\\n  end\\n  subgraph Cloud Infrastructure\\n    API[API Gateway]\\n    DB[(Database)]\\n  end\\n  Client --> API\\n  API --> DB" 
+        }
+        
+        IMPORTANT FOR DIAGRAM:
+        - Use standard Mermaid syntax.
+        - Use subgraphs to group components (e.g., 'subgraph Cloud', 'subgraph Data Layer').
+        - Use specific shapes: [(Database)] for DBs, [Service] for rectangular services, {{Queue}} for queues.
+        - Keep node names short and descriptive.
+    `;
+
+    let contents: any[] = [];
+    if (typeof resumeData === 'string') {
+        contents.push({ text: `CANDIDATE RESUME TEXT:\n${resumeData}` });
+    } else if (resumeData.inlineData) {
+        contents.push({ inlineData: resumeData.inlineData });
+        contents.push({ text: "Use the resume in the file above as the candidate profile." });
+    } else if (resumeData.text) {
+        contents.push({ text: `CANDIDATE RESUME TEXT:\n${resumeData.text}` });
+    } else {
+        throw new Error("Invalid resume data provided to Architect.");
+    }
+    contents.push({ text: instruction });
+
+    // Primary Attempt: Pro Model
+    try {
+        return await executeWithRetry(async (ai) => {
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-pro-preview',
+                contents: { parts: contents },
+                config: {
+                    responseMimeType: 'application/json',
+                    thinkingConfig: { thinkingBudget: 8000 } // Reduced budget to save tokens
+                }
+            });
+            return JSON.parse(cleanJson(response.text));
+        });
+    } catch (e: any) {
+        // Fallback: Flash Model (If Pro quota exceeded)
+        if (isRateLimitError(e)) {
+            console.warn("Magnum Opus: Pro model exhausted. Falling back to Flash.");
+            return await executeWithRetry(async (ai) => {
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: { parts: contents },
+                    config: {
+                        responseMimeType: 'application/json'
+                        // No thinking config for Flash to maximize success rate
+                    }
+                });
+                return JSON.parse(cleanJson(response.text));
+            });
+        }
+        throw e;
+    }
+};
+
+// ... existing code ...
+
+// --- PROOF OF WORK (PROJECT PROTOCOL) ---
+
+export const generateWorkChallenge = async (company: string, role: string): Promise<WorkChallenge> => {
+    const runGeneration = async (model: string, useThinking: boolean) => {
+        return executeWithRetry(async (ai) => {
+            const prompt = `
+                Act as a Senior Hiring Manager at ${company} looking for a top-tier ${role}.
+                Goal: Create a "Take-Home Challenge" that simulates a real task.
+                Return JSON: { "id": "...", "role": "...", "company": "...", "title": "...", "context": "...", "taskDescription": "...", "deliverableFormat": "...", "timeLimit": "...", "difficulty": "Hard" }
+            `;
+            const config: any = { responseMimeType: 'application/json' };
+            if (useThinking) config.thinkingConfig = { thinkingBudget: 8000 };
+            
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config
+            });
+            return JSON.parse(cleanJson(response.text));
+        });
+    };
+
+    try {
+        return await runGeneration('gemini-3-pro-preview', true);
+    } catch (e) {
+        if (isRateLimitError(e)) return await runGeneration('gemini-2.5-flash', false);
+        throw e;
+    }
+};
+
+export const gradeWorkChallenge = async (challenge: WorkChallenge, solution: string): Promise<WorkSubmission> => {
+    return executeWithRetry(async (ai) => {
+        const prompt = `
+            Act as Hiring Manager at ${challenge.company}.
+            Task: Grade this solution for: "${challenge.taskDescription}"
+            Candidate Solution: "${solution}"
+            Return JSON: { "challengeId": "${challenge.id}", "userSolution": "...", "grade": 85, "feedback": "...", "strengths": [], "weaknesses": [], "emailHook": "..." }
+        `;
+
+        // Try Flash first for grading to save Pro quota for creation
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash', 
+            contents: prompt,
+            config: { responseMimeType: 'application/json' }
+        });
+
+        return JSON.parse(cleanJson(response.text));
+    });
 };
 
 const extractSources = (response: any): GroundingSource[] => {
@@ -145,7 +319,6 @@ const extractMapLocations = (response: any): MapLocation[] => {
         }));
 };
 
-// --- AUDIO HELPERS ---
 export const decodeAudioData = (base64Data: string, ctx: AudioContext) => {
   const binaryString = atob(base64Data);
   const len = binaryString.length;
@@ -162,8 +335,6 @@ export const decodeAudioData = (base64Data: string, ctx: AudioContext) => {
   }
   return buffer;
 };
-
-// --- CORE INTELLIGENCE ---
 
 export const getQuickTip = async (question: string) => {
   return executeWithRetry(async (ai) => {
@@ -186,7 +357,7 @@ export const sendChatToAI = async (history: ChatMessage[], systemInstruction: st
       if (!lastMsg) return { text: '' };
 
       const chat = ai.chats.create({
-        model: 'gemini-3-pro-preview', // UPGRADED FOR SMARTER CHAT
+        model: 'gemini-2.5-flash', 
         config: { systemInstruction },
         history: formattedHistory
       });
@@ -199,190 +370,155 @@ export const sendChatToAI = async (history: ChatMessage[], systemInstruction: st
   });
 };
 
-// --- DEEP THINKING STRATEGY ---
 export const generateDeepCareerStrategy = async (query: string) => {
-    return executeWithRetry(async (ai) => {
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
-            contents: query,
-            config: {
-                thinkingConfig: { thinkingBudget: 32768 },
-            }
+    try {
+        return await executeWithRetry(async (ai) => {
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-pro-preview',
+                contents: query,
+                config: { thinkingConfig: { thinkingBudget: 8000 } }
+            });
+            return response.text;
         });
-        return response.text;
-    });
+    } catch (e) {
+        if (isRateLimitError(e)) {
+            return await executeWithRetry(async (ai) => {
+                const response = await ai.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: query
+                });
+                return response.text;
+            });
+        }
+        throw e;
+    }
 };
 
-// --- CHRONO LAPSE SIMULATION ---
-export const simulateFutureTimeline = async (company: string, role: string, currentRole: string): Promise<FutureSimulation> => {
+export const solveCaseStudy = async (problem: string, role: string): Promise<WarRoomAnalysis> => {
+    const run = async (model: string) => {
+        return executeWithRetry(async (ai) => {
+            const prompt = `
+                Act as a Senior Software Architect.
+                PROBLEM: "${problem}"
+                ROLE: ${role}
+                Generate valid Mermaid.js diagram code.
+                RETURN JSON: { "summary": "...", "keyConsiderations": [], "diagramType": "...", "diagramCode": "graph TD\\n..." }
+            `;
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: { responseMimeType: 'application/json' }
+            });
+            return JSON.parse(cleanJson(response.text));
+        });
+    };
+
+    try {
+        return await run('gemini-3-pro-preview');
+    } catch (e) {
+        if (isRateLimitError(e)) return await run('gemini-2.5-flash');
+        throw e;
+    }
+};
+
+export const analyzeNegotiationOffer = async (
+    company: string, 
+    role: string, 
+    offer: any, 
+    goal: any, 
+    leverage: string
+): Promise<NegotiationAnalysis> => {
     return executeWithRetry(async (ai) => {
         const prompt = `
-            Act as a Quantum Futurist and Economist. 
-            Simulate a realistic 5-year career timeline for a candidate moving from "${currentRole}" to "${role}" at "${company}".
-            
-            Use deep reasoning to project:
-            1. Market trends affecting this specific company/industry over 5 years.
-            2. Probable internal politics or structural changes.
-            3. A specific 'Artifact' for each year that proves the simulation (e.g., an Email from a boss, a News Headline, a Slack message).
-            
-            The tone should be visceral, specific, and grounded in economic reality (not just "you get promoted").
-            
-            Return JSON matching this schema:
-            {
-                "company": "${company}",
-                "role": "${role}",
-                "probabilityScore": 85,
-                "finalOutcome": "A summary of where the user ends up in 5 years.",
-                "timeline": [
-                    {
-                        "year": 1,
-                        "title": "Short event title",
-                        "description": "Detailed description of the year's defining moment.",
-                        "sentiment": "growth" | "stagnation" | "pivot" | "danger",
-                        "marketContext": "Global context (e.g. AI collapse, new tech)",
-                        "artifact": {
-                            "type": "email" | "news" | "slack" | "award",
-                            "title": "Subject line or Headline",
-                            "sender": "Sender Name (if email/slack)",
-                            "content": "Body text of the artifact",
-                            "date": "Future Date"
-                        }
-                    }
-                    // ... 5 years total
-                ]
-            }
+            Act as Expert Negotiator.
+            Scenario: ${company}, ${role}. Offer: ${JSON.stringify(offer)}. Goal: ${JSON.stringify(goal)}. Leverage: ${leverage}.
+            Return JSON: { "marketRateAnalysis": "...", "leverageAssessment": "...", "strategy": "...", "recommendedCounter": { "base": "...", "equity": "...", "signOn": "..." }, "script": "..." }
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-2.5-flash', 
             contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-                thinkingConfig: { thinkingBudget: 16000 } // High budget for temporal simulation
-            }
+            config: { responseMimeType: 'application/json', tools: [{ googleSearch: {} }] }
         });
 
-        return JSON.parse(response.text);
+        return JSON.parse(cleanJson(response.text));
     });
 };
 
-// --- THE TRIBUNAL (Hiring Committee) ---
+export const simulateFutureTimeline = async (company: string, role: string, currentRole: string): Promise<FutureSimulation> => {
+    const runSim = async (model: string, budget?: number) => {
+        return executeWithRetry(async (ai) => {
+            const prompt = `
+                Simulate 5-year career timeline: "${currentRole}" -> "${role}" at "${company}".
+                Return JSON: { "company": "${company}", "role": "${role}", "probabilityScore": 85, "finalOutcome": "...", "timeline": [{ "year": 1, "title": "...", "description": "...", "sentiment": "growth", "marketContext": "...", "artifact": { "type": "email", "title": "...", "sender": "...", "content": "...", "date": "..." } }] }
+            `;
+            const config: any = { responseMimeType: 'application/json' };
+            if (budget) config.thinkingConfig = { thinkingBudget: budget };
+
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config
+            });
+            return JSON.parse(cleanJson(response.text));
+        });
+    };
+
+    try {
+        return await runSim('gemini-3-pro-preview', 8000);
+    } catch (e) {
+        if (isRateLimitError(e)) return await runSim('gemini-2.5-flash');
+        throw e;
+    }
+};
+
 export const simulateTribunal = async (resumeText: string, company: string, role: string): Promise<TribunalSession> => {
     return executeWithRetry(async (ai) => {
         const prompt = `
-            Simulate a brutally honest, internal "Hiring Committee" private Slack/Teams channel at "${company}" discussing a candidate for "${role}".
-            
-            Characters:
-            1. "The Hiring Manager" (Focus: Delivery, Team Fit, Urgency).
-            2. "The Skeptic Peer" (Focus: Technical debt, red flags, "can they actually code/lead?").
-            3. "The Gatekeeper HR" (Focus: Culture, flight risk, salary expectations).
-
-            CANDIDATE RESUME: "${resumeText.substring(0, 3000)}"
-
-            Task:
-            Create a transcript of them arguing about this candidate. They should spot gaps in the resume, question the experience, but also find the strengths.
-            
-            Return JSON:
-            {
-                "company": "${company}",
-                "role": "${role}",
-                "members": [
-                    { "id": "m1", "role": "Hiring Manager", "name": "Sarah L.", "avatarInitials": "SL", "hiddenAgenda": "Desperate to hire but burned by last candidate." },
-                    { "id": "m2", "role": "Skeptic Peer", "name": "David K.", "avatarInitials": "DK", "hiddenAgenda": "Thinks nobody is good enough. Worried about legacy code." },
-                    { "id": "m3", "role": "Gatekeeper HR", "name": "Marcus R.", "avatarInitials": "MR", "hiddenAgenda": "Budget is tight. Wants safe bet." }
-                ],
-                "transcript": [
-                    { "memberId": "m3", "text": "Just dropped the resume in channel. Thoughts?", "sentiment": "neutral", "timestamp": "10:02 AM" },
-                    { "memberId": "m2", "text": "Looking now. The tenure at the last job is concerning...", "sentiment": "negative", "timestamp": "10:03 AM", "referencesResume": true }
-                    // ... generates 6-8 interactions
-                ],
-                "finalVerdict": "HIRE" | "NO_HIRE" | "MAYBE",
-                "verdictReason": "One sentence summary of the committee decision."
-            }
+            Simulate Hiring Committee at "${company}" for "${role}".
+            CANDIDATE: "${resumeText.substring(0, 3000)}"
+            Return JSON: { "company": "${company}", "role": "${role}", "members": [ ... ], "transcript": [ ... ], "finalVerdict": "HIRE/NO_HIRE/MAYBE", "verdictReason": "..." }
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-2.5-flash',
             contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-                thinkingConfig: { thinkingBudget: 16000 }
-            }
+            config: { responseMimeType: 'application/json' }
         });
 
-        return JSON.parse(response.text);
+        return JSON.parse(cleanJson(response.text));
     });
 };
 
-// --- RESONANCE ENGINE ---
 export const generateCareerResonance = async (urls: string[], currentRole: string): Promise<ResonanceAnalysis> => {
     return executeWithRetry(async (ai) => {
         const prompt = `
-            Act as a Hyper-Dimensional Career Physicist. 
-            
-            Step 1: Use Google Search to gather real-time context about these URLs if they are public profiles (LinkedIn, GitHub, Portfolio): ${urls.join(', ')}. 
-            Also consider the user's current role: "${currentRole}".
-            
-            Step 2: Analyze the implicit "Digital Footprint". Deduce "Shadow Skills" (skills they likely have but don't list), interests, and "vibe".
-            
-            Step 3: Identify "Dark Matter Opportunities" - roles that the user is highly qualified for but would never think to search for because they are adjacent, emerging, or obscure.
-            
-            Step 4: Generate a 3D resonance map. 
-            - Coordinates x,y,z should be between -100 and 100.
-            - "Resonance Score" is the strength of the match (proximity).
-            - "Entropy" represents market volatility.
-            
-            Return ONLY a valid JSON object (no markdown formatting) matching this schema:
-            {
-                "coreIdentity": "A synthesized 3-word archetype of the user (e.g. 'Systems Architect Poet')",
-                "marketEntropy": 0.8,
-                "opportunities": [
-                    {
-                        "id": "1",
-                        "role": "Title",
-                        "industry": "Industry",
-                        "resonanceScore": 95,
-                        "hiddenPotential": "Why this weird role fits perfectly.",
-                        "coordinates": { "x": 10, "y": 40, "z": -20 },
-                        "trajectory": "accelerating", // "stable", "accelerating", "collapsing"
-                        "skills": [
-                            { "name": "Skill 1", "category": "harmonic", "gapLevel": 10 } // harmonic (have), dissonant (missing), emergent (future)
-                        ]
-                    }
-                    // Generate 6-8 distinct, non-obvious roles
-                ]
-            }
+            Act as Career Physicist. Analyze URLs: ${urls.join(', ')} and Role: ${currentRole}.
+            Identify 6 "Dark Matter Opportunities" (non-obvious roles).
+            Return JSON: { "coreIdentity": "...", "marketEntropy": 0.8, "opportunities": [{ "id": "1", "role": "...", "industry": "...", "resonanceScore": 95, "hiddenPotential": "...", "coordinates": { "x": 10, "y": 40, "z": -20 }, "trajectory": "accelerating", "skills": [...] }] }
         `;
 
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-2.5-flash', 
             contents: prompt,
             config: {
-                // responseMimeType: 'application/json', // Do not use with googleSearch
-                thinkingConfig: { thinkingBudget: 16000 },
-                tools: [{ googleSearch: {} }] // Enable Google Search Grounding
+                tools: [{ googleSearch: {} }] 
             }
         });
 
-        const text = response.text || "{}";
-        try {
-            return JSON.parse(cleanJson(text));
-        } catch (e) {
-            console.error("JSON Parse Error in Resonance:", text);
-            throw new Error("Failed to decode resonance data from the multiverse.");
-        }
+        const text = cleanJson(response.text);
+        return JSON.parse(text);
     });
 };
 
-// --- VISUAL FORGE (IMAGES & VIDEO) ---
-
 export const generateProAsset = async (prompt: string, aspectRatio: string = '1:1', size: string = '1K') => {
     return executeWithRetry(async (ai) => {
-        if(window.aistudio && !await window.aistudio.hasSelectedApiKey()) {
+        // Fallback check to ensure key is ready, though executeWithRetry handles it.
+        if (!getCurrentApiKey() && window.aistudio && !await window.aistudio.hasSelectedApiKey()) {
              await window.aistudio.openSelectKey();
         }
         
-        const aiClient = new GoogleGenAI({ apiKey: getCurrentApiKey() }); // Fresh instance for key flow
+        const aiClient = new GoogleGenAI({ apiKey: getCurrentApiKey() });
 
         const response = await aiClient.models.generateContent({
             model: 'gemini-3-pro-image-preview',
@@ -425,11 +561,11 @@ export const editImageWithNano = async (imageBase64: string, mimeType: string, p
 
 export const generateVeoVideo = async (prompt: string, imageBase64?: string, mimeType?: string, aspectRatio: string = '16:9') => {
     return executeWithRetry(async (ai) => {
-        if(window.aistudio && !await window.aistudio.hasSelectedApiKey()) {
+        if(!getCurrentApiKey() && window.aistudio && !await window.aistudio.hasSelectedApiKey()) {
              await window.aistudio.openSelectKey();
         }
 
-        const aiClient = new GoogleGenAI({ apiKey: getCurrentApiKey() }); // Ensure fresh client with user key
+        const aiClient = new GoogleGenAI({ apiKey: getCurrentApiKey() }); 
 
         let input: any = {
             model: 'veo-3.1-fast-generate-preview',
@@ -462,13 +598,11 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string, mim
     });
 };
 
-// --- GEOSPATIAL INTEL ---
-
 export const getLocationIntel = async (query: string) => {
     return executeWithRetry(async (ai) => {
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `Find the headquarters or main office for: "${query}". Provide the address and a brief summary of the location's reviews or significance.`,
+            contents: `Find headquarters for: "${query}". Address + brief review summary.`,
             config: {
                 tools: [{ googleMaps: {} }],
             },
@@ -481,16 +615,14 @@ export const getLocationIntel = async (query: string) => {
     });
 };
 
-// --- AUDIO & SPEECH ---
-
 export const transcribeAudio = async (audioBase64: string, mimeType: string) => {
     return executeWithRetry(async (ai) => {
         const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
+            model: "gemini-2.5-flash",
             contents: {
                 parts: [
                     { inlineData: { data: audioBase64, mimeType: mimeType } },
-                    { text: "Transcribe this audio exactly. Do not add commentary." }
+                    { text: "Transcribe exact words." }
                 ]
             }
         });
@@ -516,46 +648,65 @@ export const generateSpeech = async (text: string) => {
     });
 };
 
-// --- LEGACY/COMPATIBILITY EXPORTS ---
+export const analyzeBehavioralCues = async (imageBase64: string): Promise<BehaviorMetrics> => {
+    return executeWithRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: {
+                parts: [
+                    { inlineData: { data: imageBase64, mimeType: 'image/jpeg' } },
+                    { text: "Analyze face/body for job interview. JSON: { confidence: 0-100, eyeContact: 'Good'|'Fair'|'Poor', posture: 'Open'|'Closed'|'Neutral', feedback: '1 sentence' }" }
+                ]
+            },
+            config: {
+                responseMimeType: 'application/json'
+            }
+        });
+        return JSON.parse(cleanJson(response.text));
+    });
+};
 
 export const generateDeepResumeAnalysis = async (resumeData: FileData | string, jobDesc: string): Promise<DeepResumeAnalysis> => {
-    return executeWithRetry(async (ai) => {
-        const model = 'gemini-3-flash-preview'; 
-        const promptText = `
-          You are an elite Career Strategist. Analyze this resume against the target job.
-          TARGET JOB: ${jobDesc}
-          Return JSON: { "score": number, "summaryCritique": string, "missingKeywords": string[], "sections": [], "tailoredSummary": string }
-        `;
-  
-        let contents: any = {};
-        if (typeof resumeData === 'string') {
-          contents = { parts: [{ text: `RESUME TEXT:\n${resumeData}\n\n${promptText}` }] };
-        } else if (resumeData.inlineData) {
-          contents = { parts: [{ inlineData: resumeData.inlineData }, { text: promptText }] };
-        } else {
-          contents = { parts: [{ text: `RESUME TEXT:\n${resumeData.text}\n\n${promptText}` }] };
-        }
-  
-        const response = await ai.models.generateContent({
-          model,
-          contents,
-          config: { responseMimeType: 'application/json' }
-        });
-  
-        try {
+    const runAnalysis = async (model: string) => {
+        return executeWithRetry(async (ai) => {
+            const promptText = `
+              Analyze resume vs target job.
+              TARGET JOB: ${jobDesc}
+              Return JSON: { "score": number, "summaryCritique": string, "missingKeywords": [], "sections": [{ "name": "...", "score": 0, "feedback": "...", "suggestion": "..." }], "tailoredSummary": "..." }
+            `;
+      
+            let contents: any = {};
+            if (typeof resumeData === 'string') {
+              contents = { parts: [{ text: `RESUME:\n${resumeData}\n\n${promptText}` }] };
+            } else if (resumeData.inlineData) {
+              contents = { parts: [{ inlineData: resumeData.inlineData }, { text: promptText }] };
+            } else {
+              contents = { parts: [{ text: `RESUME:\n${resumeData.text}\n\n${promptText}` }] };
+            }
+      
+            const response = await ai.models.generateContent({
+              model,
+              contents,
+              config: { responseMimeType: 'application/json' }
+            });
+      
             return JSON.parse(cleanJson(response.text));
-        } catch (e) {
-            console.error("JSON Parsing failed", e);
-            throw new Error("Analysis failed to structure data.");
-        }
-    });
+        });
+    };
+
+    try {
+        return await runAnalysis('gemini-3-flash-preview');
+    } catch (e) {
+        if (isRateLimitError(e)) return await runAnalysis('gemini-2.5-flash');
+        throw e;
+    }
 };
 
 export const enhanceImagePrompt = async (rawPrompt: string) => {
     return executeWithRetry(async (ai) => {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `Rewrite this image prompt for high-fidelity generation: "${rawPrompt}"`
+            model: 'gemini-2.5-flash',
+            contents: `Optimize prompt for high-fidelity AI image generation: "${rawPrompt}"`
         });
         return response.text;
     });
@@ -589,7 +740,7 @@ export const findKeyPeople = async (company: string, role: string) => {
 export const generateOutreachSequence = async (tName: string, tComp: string, tRole: string, uCtx: any, tone: string) => {
     return executeWithRetry(async (ai) => {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: 'gemini-2.5-flash', 
             contents: `Create outreach sequence for ${tName} at ${tComp}. Tone: ${tone}. Return JSON.`,
             config: { responseMimeType: 'application/json' }
         });
@@ -600,7 +751,7 @@ export const generateOutreachSequence = async (tName: string, tComp: string, tRo
 export const generateLinkedInStrategy = async (cRole: string, tRole: string, exp: string) => {
     return executeWithRetry(async (ai) => {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.5-flash',
             contents: `LinkedIn strategy for ${cRole} to ${tRole}. Exp: ${exp}. Return JSON.`,
             config: { responseMimeType: 'application/json' }
         });
@@ -622,7 +773,7 @@ export const generateLinkedInPost = async (topic: string, tone: string, format: 
 export const generateCareerRoadmap = async (data: any, role: string) => {
     return executeWithRetry(async (ai) => {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: 'gemini-2.5-flash',
             contents: `Career roadmap to ${role}. Return JSON.`,
             config: { responseMimeType: 'application/json' }
         });
@@ -656,14 +807,65 @@ export const getMarketInsights = async (sector: string) => {
     });
 };
 
-export const findLatestOpportunities = async (role: string, loc: string) => {
+export const findLatestOpportunities = async (role: string, loc: string, visaStatus: string = 'Citizen/PR') => {
     return executeWithRetry(async (ai) => {
+        // Construct Visa-Specific Constraints
+        let visaContext = '';
+        if (visaStatus.includes('Student 500')) {
+            visaContext = 'MUST allow "student visa", "casual", "part-time", "contract", or "internship". Look for "immediate start" or "urgent". Max 20-24 hours/week friendly is a plus.';
+        } else if (visaStatus.includes('Graduate 485')) {
+            visaContext = 'Must accept "Graduate Visa 485". Full-time entry-level roles allowed.';
+        } else if (visaStatus.includes('Sponsorship')) {
+            visaContext = 'Must explicitly mention "Visa Sponsorship" or "TSS 482" available.';
+        }
+
+        const prompt = `
+            FIND REAL JOB OPENINGS.
+            ROLE: ${role}
+            LOCATION: ${loc}
+            VISA STATUS: ${visaStatus}
+            ${visaContext}
+
+            SEARCH INSTRUCTIONS:
+            1. Search for at least 30 open roles to ensure we get ~25 valid results.
+            2. Prioritize "Company Career Pages" (Direct ATS links like Greenhouse, Lever, Ashby) over aggregators (Indeed/Seek/LinkedIn) to ensure validity.
+            3. Look for "Hidden Gems": < 10 applicants, posted < 24h ago, startups, direct email applications.
+            4. If the exact link is behind a login wall, provide the main Career Page URL for that company instead.
+            5. DO NOT hallucinate job IDs or links. If you find a job, use the real URL found in search grounding.
+
+            RETURN JSON ARRAY (Min 25 items):
+            [
+              {
+                "id": "unique_string",
+                "title": "Role Title",
+                "company": "Company Name",
+                "url": "Valid URL (prioritize direct company site)",
+                "timestamp": "e.g. '2 hours ago', 'Today'",
+                "isNew": true/false
+              }
+            ]
+        `;
+
         const response = await ai.models.generateContent({
             model: "gemini-2.5-flash",
-            contents: `5 new jobs for ${role} in ${loc}. JSON.`,
-            config: { tools: [{ googleSearch: {} }] }
+            contents: prompt,
+            config: { 
+                tools: [{ googleSearch: {} }]
+            }
         });
-        try { return JSON.parse(cleanJson(response.text)); } 
+        try { 
+            const res = JSON.parse(cleanJson(response.text));
+            // Ensure array and IDs to prevent rendering errors
+            if (!Array.isArray(res)) return [];
+            return res.map((job: any) => ({
+                ...job,
+                id: job.id || `job-${Math.random().toString(36).substr(2, 9)}`,
+                title: job.title || 'Untitled Opportunity',
+                company: job.company || 'Unknown Company',
+                url: job.url || '#',
+                timestamp: job.timestamp || 'Just now'
+            }));
+        } 
         catch { return []; }
     });
 };
@@ -690,7 +892,7 @@ export const generateVideoPitch = async (prompt: string) => {
 export const testConnection = async () => {
     try {
         await executeWithRetry(async (ai) => {
-            await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: 'ping' });
+            await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: 'ping' });
         });
         return { success: true, message: "Gemini Uplink Active" };
     } catch (e: any) {

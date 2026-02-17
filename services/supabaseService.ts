@@ -1,3 +1,4 @@
+
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Application, UserProfile, SavedDocument } from '../types';
 
@@ -56,7 +57,8 @@ export const getUserProfile = async (userId: string): Promise<UserProfile | null
             email: data.email,
             title: data.title,
             clearanceLevel: data.clearance_level,
-            atsScore: data.ats_score
+            atsScore: data.ats_score,
+            currentStage: data.current_stage || 'preparation'
         };
     } catch (e) {
         return null;
@@ -132,7 +134,7 @@ export const fetchDocuments = async (): Promise<SavedDocument[]> => {
 
     if (error) return [];
 
-    return data.map((d: any) => ({
+    return (data || []).map((d: any) => ({
         id: d.id,
         title: d.title,
         content: d.content,
@@ -173,7 +175,7 @@ export const fetchApplications = async (): Promise<Application[]> => {
     if (error) return [];
 
     // Map DB snake_case to frontend camelCase
-    return data.map((app: any) => ({
+    return (data || []).map((app: any) => ({
         id: app.id,
         company: app.company,
         role: app.role,

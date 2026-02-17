@@ -1,14 +1,51 @@
-
 import React, { useState, useRef } from 'react';
 import { simulateTribunal } from '../services/geminiService';
 import { TribunalSession, TribunalMember } from '../types';
 import { parseFile } from '../services/fileService';
 import { FileData } from '../types';
 import { 
-    Users, Upload, Eye, MessageSquare, Lock, 
-    ShieldAlert, AlertTriangle, CheckCircle2, 
-    Terminal, Gavel, X
+    Users, Upload, Eye, Lock, 
+    ShieldAlert, Terminal, Gavel
 } from 'lucide-react';
+
+interface MemberAvatarProps {
+    member: TribunalMember;
+    hoveredMember: string | null;
+    setHoveredMember: (id: string | null) => void;
+}
+
+// Extract component to avoid recreating it on every render and fix key prop issues
+const MemberAvatar: React.FC<MemberAvatarProps> = ({ 
+    member, 
+    hoveredMember, 
+    setHoveredMember 
+}) => {
+    const isHovered = hoveredMember === member.id;
+    const colors: Record<string, string> = {
+        'Hiring Manager': 'bg-blue-600',
+        'Skeptic Peer': 'bg-red-600',
+        'Gatekeeper HR': 'bg-yellow-600'
+    };
+    
+    return (
+        <div 
+          className="relative group cursor-help"
+          onMouseEnter={() => setHoveredMember(member.id)}
+          onMouseLeave={() => setHoveredMember(null)}
+        >
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white border-2 border-black shadow-lg ${colors[member.role] || 'bg-gray-600'} transition-transform duration-300 ${isHovered ? 'scale-110' : ''}`}>
+                {member.avatarInitials}
+            </div>
+            
+            {/* Hidden Agenda Tooltip */}
+            <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 bg-black border border-white/20 rounded p-3 text-[10px] text-gray-300 pointer-events-none transition-all duration-300 z-50 ${isHovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
+                <div className="font-bold text-white mb-1 uppercase tracking-wider">{member.role}</div>
+                <div className="text-barker-gold italic">"{member.hiddenAgenda}"</div>
+                <div className="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-black border-r border-b border-white/20 rotate-45"></div>
+            </div>
+        </div>
+    );
+};
 
 const TheTribunal: React.FC = () => {
   const [fileData, setFileData] = useState<FileData | null>(null);
@@ -46,34 +83,6 @@ const TheTribunal: React.FC = () => {
       }
   };
 
-  const MemberAvatar = ({ member }: { member: TribunalMember }) => {
-      const isHovered = hoveredMember === member.id;
-      const colors = {
-          'Hiring Manager': 'bg-blue-600',
-          'Skeptic Peer': 'bg-red-600',
-          'Gatekeeper HR': 'bg-yellow-600'
-      };
-      
-      return (
-          <div 
-            className="relative group cursor-help"
-            onMouseEnter={() => setHoveredMember(member.id)}
-            onMouseLeave={() => setHoveredMember(null)}
-          >
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white border-2 border-black shadow-lg ${colors[member.role]} transition-transform duration-300 ${isHovered ? 'scale-110' : ''}`}>
-                  {member.avatarInitials}
-              </div>
-              
-              {/* Hidden Agenda Tooltip */}
-              <div className={`absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-48 bg-black border border-white/20 rounded p-3 text-[10px] text-gray-300 pointer-events-none transition-all duration-300 z-50 ${isHovered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-                  <div className="font-bold text-white mb-1 uppercase tracking-wider">{member.role}</div>
-                  <div className="text-barker-gold italic">"{member.hiddenAgenda}"</div>
-                  <div className="absolute bottom-[-6px] left-1/2 -translate-x-1/2 w-3 h-3 bg-black border-r border-b border-white/20 rotate-45"></div>
-              </div>
-          </div>
-      );
-  };
-
   return (
     <div className="max-w-7xl mx-auto space-y-6 lg:space-y-8 pb-12 h-[calc(100vh-100px)] flex flex-col">
        <div className="flex items-center gap-6 mb-4 border-b border-barker-gold/20 pb-6 shrink-0">
@@ -107,7 +116,7 @@ const TheTribunal: React.FC = () => {
                             onClick={() => fileInputRef.current?.click()}
                             className={`border-2 border-dashed p-6 flex items-center justify-center gap-4 cursor-pointer transition-all rounded-xl ${fileData ? 'border-green-500 bg-green-500/10' : 'border-white/10 hover:border-white/30 bg-black/40'}`}
                         >
-                            {fileData ? <CheckCircle2 className="w-6 h-6 text-green-500"/> : <Upload className="w-6 h-6 text-gray-500"/>}
+                            {fileData ? <div className="w-6 h-6 text-green-500">✓</div> : <Upload className="w-6 h-6 text-gray-500"/>}
                             <span className="text-sm font-bold text-gray-300 uppercase tracking-widest">{fileData ? 'Resume Loaded' : 'Upload Resume'}</span>
                             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
                        </div>
@@ -168,7 +177,12 @@ const TheTribunal: React.FC = () => {
                       </h3>
                       <div className="flex justify-center gap-4 mb-8">
                           {session.members.map(m => (
-                              <MemberAvatar key={m.id} member={m} />
+                              <MemberAvatar 
+                                key={m.id} 
+                                member={m} 
+                                hoveredMember={hoveredMember}
+                                setHoveredMember={setHoveredMember}
+                              />
                           ))}
                       </div>
                       <p className="text-[10px] text-gray-500 text-center uppercase tracking-widest">

@@ -37,7 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
              name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Operative',
              title: 'Candidate', 
              atsScore: 0,
-             clearanceLevel: 'L1'
+             clearanceLevel: 'L1',
+             currentStage: 'preparation'
            };
            setUser(profile);
            setLoading(false);
@@ -50,7 +51,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (stored && mounted) {
         try {
             const parsed = JSON.parse(stored);
-            // Simple check to ensure it's not the old default template causing loops
+            // Migrate old profiles that lack stage
+            if (!parsed.currentStage) parsed.currentStage = 'preparation';
+            
             if (parsed.email !== 'local@system') {
                 setUser(parsed);
             } else {
@@ -75,7 +78,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Operative',
                  title: 'Candidate',
                  atsScore: 0,
-                 clearanceLevel: 'L1'
+                 clearanceLevel: 'L1',
+                 currentStage: 'preparation'
              };
              setUser(profile);
              localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(profile));
@@ -87,7 +91,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
         mounted = false;
-        authListener.data.subscription.unsubscribe();
+        authListener?.subscription.unsubscribe();
     };
   }, [supabase]);
 
@@ -105,7 +109,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                  name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Operative',
                  title: 'Candidate',
                  atsScore: 0,
-                 clearanceLevel: 'L1'
+                 clearanceLevel: 'L1',
+                 currentStage: 'preparation'
              };
              setUser(profile);
          }

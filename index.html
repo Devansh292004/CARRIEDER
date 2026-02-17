@@ -4,52 +4,55 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Carrieder | Pro Edition</title>
+    <title>Carrieder | Executive Suite</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
           extend: {
             colors: {
-              barker: {
-                dark: '#050505',      // Deepest Black
-                panel: '#0F0F0F',     // Off-Black Panel
-                gold: '#E53E3E',      // Professional Red (Stranger Things Red)
-                golddim: '#742A2A',   // Dim Red
-                charcoal: '#1A1A1A',
-                cream: '#F3F4F6',     // Gray-100
-                holo: '#FCA5A5',      // Light Red/Pink accent
+              exo: {
+                void: '#02040a',      // Ultra Deep Navy
+                glass: 'rgba(10, 15, 30, 0.75)', // Dark Tinted Glass
+                surface: '#0f1629',   // Panel Color
+                primary: '#FFC000',   // Hot Gold
+                accent: '#FFD700',    // Lighter Gold
+                cyan: '#00f0ff',      // Cyber Cyan (contrast)
+                success: '#00dc82',
+                warning: '#ffb300',
+                error: '#ff3366',
+                text: '#e2e8f0',      
               }
             },
             fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-              display: ['Inter', 'sans-serif'],
-              mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+              sans: ['Outfit', 'sans-serif'],
+              display: ['Outfit', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            backgroundImage: {
+              'aurora': 'linear-gradient(180deg, #02040a 0%, #050a14 100%)',
+              'gold-gradient': 'linear-gradient(135deg, #FFC000 0%, #FF9500 100%)',
+              'gold-shine': 'linear-gradient(45deg, transparent 25%, rgba(255,192,0,0.3) 50%, transparent 75%)',
             },
             animation: {
-              'fade-in-up': 'fadeInUp 0.6s ease-out forwards',
+              'fade-in': 'fadeIn 0.5s ease-out forwards',
+              'slide-up': 'slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards',
               'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-              'flicker': 'flicker 3s infinite',
-              'scan-vertical': 'scanVertical 3s linear infinite',
-              'holo-float': 'holoFloat 6s ease-in-out infinite',
+              'shine': 'shine 3s infinite',
             },
             keyframes: {
-              fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(20px) scale(0.98)' },
-                '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
               },
-              flicker: {
-                '0%, 19.999%, 22%, 62.999%, 64%, 64.999%, 70%, 100%': { opacity: '0.99' },
-                '20%, 21.999%, 63%, 63.999%, 65%, 69.999%': { opacity: '0.4' },
+              slideUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
               },
-              scanVertical: {
-                '0%': { top: '0%' },
-                '100%': { top: '100%' },
-              },
-              holoFloat: {
-                '0%, 100%': { transform: 'translateY(0) rotateX(2deg)' },
-                '50%': { transform: 'translateY(-15px) rotateX(5deg)' },
+              shine: {
+                '0%': { backgroundPosition: '200% 0' },
+                '100%': { backgroundPosition: '-200% 0' }
               }
             }
           }
@@ -58,213 +61,98 @@
     </script>
     <style>
       body {
-        font-family: 'Inter', sans-serif;
-        background-color: #050505;
-        color: #F3F4F6;
-        background-image: linear-gradient(to top, #1a0505 0%, #050505 40%);
+        font-family: 'Outfit', sans-serif;
+        background-color: #02040a;
+        color: #e2e8f0;
         overflow-x: hidden;
       }
       
-      /* Scrollbar */
-      ::-webkit-scrollbar { width: 6px; }
-      ::-webkit-scrollbar-track { background: #050505; }
-      ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-      ::-webkit-scrollbar-thumb:hover { background: #E53E3E; }
+      /* Modern Scrollbar - Hot Gold */
+      ::-webkit-scrollbar { width: 5px; }
+      ::-webkit-scrollbar-track { background: #02040a; }
+      ::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+      ::-webkit-scrollbar-thumb:hover { background: #FFC000; }
 
-      /* Sleek Card Styling with Red Glow Hover */
-      .barker-card {
-        background: rgba(20, 20, 20, 0.6);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border-radius: 12px;
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
+      /* Sexy Glass */
+      .glass-panel {
+        background: rgba(15, 23, 41, 0.7);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 192, 0, 0.15); /* Gold border */
+        box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
       }
       
-      .barker-card:hover {
-        border-color: rgba(229, 62, 62, 0.5);
-        box-shadow: 0 0 25px rgba(229, 62, 62, 0.15);
+      .glass-card {
+        background: rgba(20, 25, 40, 0.5);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      
+      .glass-card:hover {
+        border-color: rgba(255, 192, 0, 0.5); /* Hot Gold Border on Hover */
+        box-shadow: 0 0 30px -5px rgba(255, 192, 0, 0.15);
         transform: translateY(-2px);
       }
 
       /* Buttons */
-      .btn-barker {
-        background: #E53E3E;
-        color: white;
-        font-weight: 600;
-        font-size: 0.875rem;
-        letter-spacing: 0.025em;
-        border-radius: 8px;
-        transition: all 0.2s ease;
-        border: 1px solid transparent;
-        text-transform: none;
+      .btn-primary {
+        background: linear-gradient(135deg, #FFC000 0%, #E08E00 100%);
+        color: #000;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
         position: relative;
         overflow: hidden;
+        transition: all 0.3s ease;
+        border: none;
+        box-shadow: 0 4px 20px rgba(255, 192, 0, 0.3);
       }
-      .btn-barker:hover {
-        background: #C53030;
-        box-shadow: 0 0 20px rgba(229, 62, 62, 0.6);
-      }
-      .btn-barker:disabled {
-        background: #333;
-        color: #666;
-        box-shadow: none;
-        cursor: not-allowed;
+      
+      .btn-primary:hover {
+        box-shadow: 0 0 30px rgba(255, 192, 0, 0.6);
+        transform: scale(1.02);
       }
 
-      /* Stranger Things / 80s Retro Scanlines */
-      .scanlines {
+      /* Inputs */
+      input, textarea, select {
+        background: rgba(5, 8, 16, 0.8) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #fff !important;
+        font-family: 'JetBrains Mono', monospace !important;
+      }
+      
+      input:focus, textarea:focus, select:focus {
+        border-color: #FFC000 !important;
+        box-shadow: 0 0 15px rgba(255, 192, 0, 0.2) !important;
+        outline: none;
+        background: rgba(10, 15, 25, 1) !important;
+      }
+
+      /* Background FX */
+      .bg-aurora {
         position: fixed;
         top: 0;
         left: 0;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(
-          to bottom,
-          rgba(255,255,255,0),
-          rgba(255,255,255,0) 50%,
-          rgba(0,0,0,0.2) 50%,
-          rgba(0,0,0,0.2)
-        );
-        background-size: 100% 4px;
+        width: 100vw;
+        height: 100vh;
+        z-index: -1;
+        overflow: hidden;
         pointer-events: none;
-        z-index: 9999;
+        background: #02040a;
+      }
+      
+      .blob {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(100px);
         opacity: 0.15;
       }
-      
-      .vignette {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(20,0,0,0.6) 100%);
-        pointer-events: none;
-        z-index: 9998;
-      }
 
-      /* Glitch Effect Class */
-      .glitch-text {
-        position: relative;
-      }
-      .glitch-text::before,
-      .glitch-text::after {
-        content: attr(data-text);
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        opacity: 0.8;
-      }
-      .glitch-text::before {
-        color: #0ff;
-        z-index: -1;
-        animation: glitch-anim-1 3s infinite linear alternate-reverse;
-      }
-      .glitch-text::after {
-        color: #f00;
-        z-index: -2;
-        animation: glitch-anim-2 2s infinite linear alternate-reverse;
-      }
-
-      @keyframes glitch-anim-1 {
-        0% { clip-path: inset(20% 0 80% 0); transform: translate(-2px, 1px); }
-        20% { clip-path: inset(60% 0 10% 0); transform: translate(2px, -1px); }
-        40% { clip-path: inset(40% 0 50% 0); transform: translate(-2px, 2px); }
-        60% { clip-path: inset(80% 0 5% 0); transform: translate(2px, -2px); }
-        80% { clip-path: inset(10% 0 60% 0); transform: translate(-1px, 1px); }
-        100% { clip-path: inset(50% 0 30% 0); transform: translate(1px, -1px); }
-      }
-      @keyframes glitch-anim-2 {
-        0% { clip-path: inset(10% 0 60% 0); transform: translate(2px, -1px); }
-        20% { clip-path: inset(80% 0 5% 0); transform: translate(-2px, 2px); }
-        40% { clip-path: inset(30% 0 20% 0); transform: translate(2px, 1px); }
-        60% { clip-path: inset(10% 0 80% 0); transform: translate(-1px, -2px); }
-        80% { clip-path: inset(40% 0 10% 0); transform: translate(2px, 2px); }
-        100% { clip-path: inset(70% 0 20% 0); transform: translate(-2px, -1px); }
-      }
-
-      /* 4D Scroll Entry Animation Class */
-      .reveal-on-scroll {
-        opacity: 0;
-        transform: translateY(30px) perspective(1000px) rotateX(10deg);
-        transition: opacity 0.8s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
-        will-change: opacity, transform;
-      }
-      .reveal-on-scroll.is-visible {
-        opacity: 1;
-        transform: translateY(0) perspective(1000px) rotateX(0deg);
-      }
-
-      /* Inputs - Standardized */
-      input, textarea, select {
-        border-radius: 8px;
-        background-color: rgba(0,0,0,0.3) !important;
-        border: 1px solid rgba(255,255,255,0.1) !important;
-        color: #fff !important;
-        font-family: 'Inter', sans-serif !important;
-        font-size: 0.875rem !important; /* text-sm */
-      }
-      input:focus, textarea:focus, select:focus {
-        border-color: #E53E3E !important;
-        box-shadow: 0 0 10px rgba(229, 62, 62, 0.3) !important;
-        outline: none !important;
-      }
-      
-      /* Resume Bullets Specific */
-      .resume-bullets ul {
-        list-style-type: disc;
-        margin-left: 1.5rem;
-      }
-      .resume-bullets li {
-        margin-bottom: 0.25rem;
-      }
-
-      /* Marquee */
-      @keyframes marquee {
-        0% { transform: translateX(0); }
-        100% { transform: translateX(-50%); }
-      }
-      .animate-marquee {
-        animation: marquee 40s linear infinite;
-      }
-
-      /* PRINT STYLES FOR RESUME BUILDER */
       @media print {
-        @page {
-          margin: 0;
-          size: auto;
-        }
-        body {
-          background-color: white !important;
-          color: black !important;
-          background-image: none !important;
-        }
-        /* Hide all UI elements */
-        aside, .scanlines, .vignette, .print\:hidden, nav, header {
-          display: none !important;
-        }
-        main {
-            height: auto !important;
-            overflow: visible !important;
-            padding: 0 !important;
-        }
-        /* Ensure resume looks perfect */
-        .bg-white {
-            box-shadow: none !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            width: 100% !important;
-            max-width: none !important;
-        }
-        /* Override dark inputs */
-        input, textarea {
-            display: none !important;
-        }
+        body { background: white; color: black; }
+        .bg-aurora, nav, aside { display: none; }
+        .glass-panel, .glass-card { background: none; border: none; box-shadow: none; backdrop-filter: none; }
       }
     </style>
   <script type="importmap">
@@ -278,7 +166,12 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
     "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
     "mammoth": "https://esm.sh/mammoth@1.6.0",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3"
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.3",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.13.0",
+    "mermaid": "https://esm.sh/mermaid@10.9.0",
+    "@react-three/fiber": "https://esm.sh/@react-three/fiber@^9.5.0",
+    "@react-three/drei": "https://esm.sh/@react-three/drei@^10.7.7",
+    "three": "https://esm.sh/three@^0.182.0"
   }
 }
 </script>
