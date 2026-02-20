@@ -1,8 +1,6 @@
-
 import { FileData, JobOpportunity, ChatMessage, GroundingSource, CompanyDossier, DeepResumeAnalysis, KeyPerson, OutreachSequence, LinkedInProfileStrategy, LinkedInPost, CareerRoadmap, MapLocation, FutureSimulation, TribunalSession, ResonanceAnalysis, NegotiationAnalysis, WarRoomAnalysis, WorkChallenge, WorkSubmission, ProjectArtifact, BehaviorMetrics } from '../types';
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 
-// --- KEY ROTATION SYSTEM (AKRS) ---
 const RAW_KEYS = process.env.API_KEY || '';
 const API_KEYS = RAW_KEYS.includes(',') 
   ? RAW_KEYS.split(',').map(k => k.trim()).filter(k => k) 
@@ -18,13 +16,8 @@ export const getCurrentApiKey = () => {
 };
 
 export const ensureApiKeySelected = async () => {
-  // 1. Check for manually entered key (Local Host Priority)
   if (localStorage.getItem('carrieder_custom_api_key')) return true;
-  
-  // 2. Check environment key
   if (process.env.API_KEY) return true;
-
-  // 3. Fallback to AI Studio Wrapper (Only if no local key exists)
   if (typeof window !== 'undefined' && window.aistudio) {
     const hasKey = await window.aistudio.hasSelectedApiKey();
     if (!hasKey) {
@@ -66,7 +59,6 @@ const getAi = () => {
     return new GoogleGenAI({ apiKey: key });
 };
 
-// Robust Error Checker for Google GenAI
 const isRateLimitError = (error: any): boolean => {
     return error.status === 429 || 
            error.status === 503 || 
@@ -85,15 +77,12 @@ const executeWithRetry = async <T>(
     operation: (ai: GoogleGenAI) => Promise<T>
 ): Promise<T> => {
     const customKey = localStorage.getItem('carrieder_custom_api_key');
-    
-    // If using custom key, we don't rotate, but we do basic retry backoff
     if (customKey) {
         try {
             const ai = getAi();
             return await operation(ai);
         } catch (error: any) {
             if (isRateLimitError(error)) {
-                // One simple retry for custom keys after delay
                 await new Promise(r => setTimeout(r, 2000));
                 return await operation(getAi());
             }
@@ -111,17 +100,14 @@ const executeWithRetry = async <T>(
         } catch (error: any) {
             if (isRateLimitError(error)) {
                 console.warn(`Key #${currentKeyIndex + 1} depleted/rate-limited. Engaging mitigation...`);
-                
                 if (API_KEYS.length > 1) {
                     exhaustedKeys.add(currentKeyIndex);
                     rotateKey();
                 } else {
-                    // Single key setup: Wait exponentially
                     const delay = 2000 * Math.pow(1.5, attempts);
                     console.warn(`Single key setup. Waiting ${delay}ms...`);
                     await new Promise(r => setTimeout(r, delay));
                 }
-                
                 attempts++;
             } else {
                 throw error;
@@ -131,74 +117,316 @@ const executeWithRetry = async <T>(
     throw new Error("System Failure: All API Quotas Exhausted. Please check billing or try again later.");
 };
 
-// Helper: Robust JSON Cleaner
 const cleanJson = (text: string) => {
     if (!text) return "{}";
-    
-    // 1. Prioritize explicit JSON blocks
     const jsonBlockMatch = text.match(/```json\s*([\s\S]*?)\s*```/i);
-    if (jsonBlockMatch && jsonBlockMatch[1]) {
-        return jsonBlockMatch[1];
-    }
-
-    // 2. If no "json" tag, looks for the first code block that STARTS with a valid JSON char
+    if (jsonBlockMatch && jsonBlockMatch[1]) return jsonBlockMatch[1];
     const genericBlockMatch = text.match(/```\s*([\s\S]*?)\s*```/i);
     if (genericBlockMatch && genericBlockMatch[1]) {
         const content = genericBlockMatch[1].trim();
-        if (content.startsWith('{') || content.startsWith('[')) {
-            return content;
-        }
+        if (content.startsWith('{') || content.startsWith('[')) return content;
     }
-
-    // 3. Fallback: Find the first '{' and the last '}' 
     const firstBrace = text.indexOf('{');
     const lastBrace = text.lastIndexOf('}');
-
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-        return text.substring(firstBrace, lastBrace + 1);
-    }
-
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) return text.substring(firstBrace, lastBrace + 1);
     return text; 
 };
 
-// --- THE ARCHITECT (MAGNUM OPUS GENERATOR) ---
+const extractSources = (response: any): GroundingSource[] => {
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    return chunks
+        .filter((c: any) => c.web?.uri && c.web?.title)
+        .map((c: any) => ({
+            title: c.web.title,
+            uri: c.web.uri
+        }));
+};
+
+const extractMapLocations = (response: any): MapLocation[] => {
+    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    return chunks
+        .filter((c: any) => c.maps?.uri)
+        .map((c: any) => ({
+            title: c.maps.placeAnswerSources?.reviewSnippets?.[0]?.reviewText?.substring(0, 50) + "..." || c.maps.title || "Location",
+            uri: c.maps.uri
+        }));
+};
+
+export const generateCareerResonance = async (resumeText: string, preferences: string): Promise<ResonanceAnalysis> => {
+    const runAnalysis = async (model: string) => {
+        return executeWithRetry(async (ai) => {
+            const prompt = `
+            Act as a Senior Career Counselor and Market Analyst.
+            
+            ANALYZE THIS CANDIDATE:
+            ${resumeText.substring(0, 10000)}
+            
+            USER CONTEXT/PREFERENCES:
+            "${preferences}"
+
+            YOUR TASK:
+            Identify 5 distinct career opportunities for this candidate based on their skills, the current market, and potential pivots.
+            
+            Use professional, standard business English. Avoid jargon or overly metaphorical language.
+            
+            MUST GENERATE 5 ROLES, ONE OF EACH TYPE:
+            1. "Lateral" (Immediate fit, similar to current)
+            2. "Promotion" (Step up in same path)
+            3. "Pivot" (Different industry/role utilizing transferrable skills)
+            4. "Moonshot" (High risk, high reward, requires upskilling)
+            5. "Wildcard" (Unexpected but data-backed fit)
+
+            For each role, estimate Salary, Market Demand, and concrete Skills Gap.
+            
+            RETURN JSON ONLY in this format:
+            {
+              "archetype": "Two-word professional profile (e.g. 'Systems Architect')",
+              "keyStrengths": ["Strength 1", "Strength 2", "Strength 3"],
+              "marketValue": "Estimated Salary Range (e.g. $120k - $160k)",
+              "opportunities": [
+                {
+                  "id": "1",
+                  "type": "Lateral",
+                  "role": "Job Title",
+                  "companyType": "e.g. 'Series C FinTech' or 'Enterprise SaaS'",
+                  "matchScore": 95,
+                  "salaryRange": "$140k - $160k",
+                  "timeToRole": "Immediate",
+                  "skillsGap": ["None"],
+                  "skillsMatch": ["React", "Node", "Leadership"],
+                  "marketDemand": "High",
+                  "rationale": "One clear sentence explaining why this is a good fit.",
+                  "actionPlan": ["Update LinkedIn", "Apply to top 5 firms"],
+                  "coordinates": { "x": 0, "y": 0, "z": 0 }
+                },
+                ... (4 more)
+              ]
+            }
+            `;
+
+            const response = await ai.models.generateContent({
+                model,
+                contents: prompt,
+                config: {
+                    responseMimeType: 'application/json',
+                    tools: [{ googleSearch: {} }] // Use Search for salary data
+                }
+            });
+
+            const text = cleanJson(response.text);
+            const data = JSON.parse(text);
+            
+            data.opportunities = data.opportunities.map((opp: any, i: number) => {
+                let x = 0, y = 0, z = 0;
+                const angle = (i / 5) * Math.PI * 2;
+                const radius = (100 - opp.matchScore) * 3;
+                x = Math.cos(angle) * radius;
+                z = Math.sin(angle) * radius;
+                y = (Math.random() - 0.5) * 40;
+                
+                return {
+                    ...opp,
+                    id: opp.id || i.toString(),
+                    coordinates: { x, y, z }
+                };
+            });
+
+            return data;
+        });
+    };
+
+    try {
+        return await runAnalysis('gemini-3-pro-preview');
+    } catch (e) {
+        if (isRateLimitError(e)) return await runAnalysis('gemini-2.5-flash');
+        throw e;
+    }
+};
+
+export const getMarketInsights = async (sector: string) => {
+    return executeWithRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Market trends for ${sector}.`,
+            config: { tools: [{ googleSearch: {} }] }
+        });
+        return response.text;
+    });
+};
+
+export const findLatestOpportunities = async (role: string, loc: string, visaStatus: string = 'Citizen/PR', mode: 'standard' | 'stealth' = 'standard') => {
+    return executeWithRetry(async (ai) => {
+        const today = new Date().toISOString().split('T')[0];
+        
+        // Construct Strict Visa-Specific Query Parts
+        let visaInstruction = '';
+        if (visaStatus.includes('Sponsorship') || visaStatus.includes('482') || visaStatus.includes('TSS')) {
+            visaInstruction = 'CRITICAL: The candidate requires VISA SPONSORSHIP. Filter out any job that says "Must be a citizen", "PR only", or "No sponsorship". Look for "visa sponsorship available". If uncertain, mark visaStatus as "Unknown".';
+        } else if (visaStatus.includes('Student') || visaStatus.includes('Graduate')) {
+            visaInstruction = 'CRITICAL: Candidate is on a Student/Graduate visa. Prioritize roles allowing part-time or graduate programs.';
+        } else {
+            visaInstruction = 'Candidate is likely a Citizen/PR. Standard rules apply.';
+        }
+
+        const prompt = `
+            ACT AS AN ELITE EXECUTIVE RECRUITER.
+            TODAY'S DATE: ${today}
+            
+            TASK: Find exactly 10 HIGH-QUALITY, REAL job openings. Quality over quantity.
+            
+            PARAMETERS:
+            - ROLE: "${role}"
+            - LOCATION: "${loc}" (or Remote if applicable)
+            - MODE: ${mode.toUpperCase()}
+            
+            ${visaInstruction}
+
+            STRICT RULES FOR 100% SUCCESS RATE:
+            1. **NO BROKEN LINKS**: You MUST verify the URL. 
+               - Priority 1: Direct ATS links (greenhouse.io, lever.co, ashbyhq.com, workable.com).
+               - Priority 2: Company Career Pages.
+               - **FAIL-SAFE**: If you find a job but cannot guarantee the direct URL is stable, you MUST construct a Google Search URL as the 'url' field. 
+                 Example: "https://www.google.com/search?q=${encodeURIComponent(role)}+at+${encodeURIComponent("COMPANY_NAME")}+careers".
+                 This ensures the user never gets a 404 error.
+            
+            2. **FRESHNESS**: 
+               - Only include jobs posted within the last 14 days.
+               - If it looks old, discard it.
+            
+            3. **ACCURACY**:
+               - Title must match "${role}" closely.
+               - Location must match "${loc}".
+
+            RETURN JSON ARRAY (Exactly 10 items):
+            [
+              {
+                "id": "unique_string",
+                "title": "Exact Job Title",
+                "company": "Company Name",
+                "url": "Direct URL OR Fallback Google Search URL",
+                "location": "City, Country",
+                "timestamp": "e.g. '2 days ago'",
+                "isNew": true,
+                "visaStatus": "Sponsorship Available" | "Citizen Only" | "Unknown"
+              }
+            ]
+        `;
+
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: { 
+                tools: [{ googleSearch: {} }]
+            }
+        });
+        
+        try { 
+            const res = JSON.parse(cleanJson(response.text));
+            if (!Array.isArray(res)) return [];
+            
+            // Post-processing to sanitize and ensure 100% working links via fallback logic
+            return res.slice(0, 10).map((job: any) => {
+                let finalUrl = job.url;
+                // If URL looks suspicious or generic, force a search fallback
+                if (!finalUrl || finalUrl.length < 10 || finalUrl.includes('example.com') || !finalUrl.startsWith('http')) {
+                    finalUrl = `https://www.google.com/search?q=${encodeURIComponent(job.company + " " + job.title + " careers")}`;
+                }
+
+                return {
+                    ...job,
+                    id: job.id || `job-${Math.random().toString(36).substr(2, 9)}`,
+                    title: job.title || 'Untitled Opportunity',
+                    company: job.company || 'Unknown Company',
+                    url: finalUrl,
+                    timestamp: job.timestamp || 'Recently',
+                    visaStatus: job.visaStatus || 'Unknown'
+                };
+            });
+        } 
+        catch { return []; }
+    });
+};
+
+export const editHeadshot = async (b64: string, mime: string, prompt: string) => {
+    return editImageWithNano(b64, mime, prompt);
+};
+
+export const verifyCredential = async (name: string, issuer: string) => {
+    return executeWithRetry(async (ai) => {
+        const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Verify credential ${name} from ${issuer}.`,
+            config: { tools: [{ googleSearch: {} }] }
+        });
+        return response.text;
+    });
+};
+
+export const generateVideoPitch = async (prompt: string) => {
+    return generateVeoVideo(prompt);
+};
+
+export const testConnection = async () => {
+    try {
+        await executeWithRetry(async (ai) => {
+            await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: 'ping' });
+        });
+        return { success: true, message: "Gemini Uplink Active" };
+    } catch (e: any) {
+        return { success: false, message: e.message };
+    }
+};
 
 export const generateMagnumOpus = async (resumeData: FileData | string, jobDescription: string): Promise<ProjectArtifact> => {
     const instruction = `
-        Act as a Senior Principal Software Architect.
+        Act as a legendary Distinguished Engineer and Software Architect.
         
-        GOAL: Create a "Bridge Project" (Magnum Opus) for a candidate.
-        The project must:
-        1. Use the tech stack required in the TARGET JOB but missing or weak in the RESUME.
-        2. Be impressive enough to put on a resume immediately.
-        3. Look like it was built by a passionate human.
+        GOAL: Architect and implement a "Magnum Opus" project (Bridge Project) for a candidate.
+        This project must bridge the skill gap between the CANDIDATE RESUME and the TARGET JOB DESCRIPTION by implementing the *hardest* requirements of the job.
         
+        CRITICAL OUTPUT REQUIREMENTS:
+        
+        1. **Documentation (README.md)**:
+           - Write a Master-Class Technical Design Document (TDD) as the README.
+           - Include: Executive Summary, Architecture Decision Records (ADRs) explaining WHY certain tech was chosen (CAP theorem, trade-offs), Scalability Strategy (Sharding, Caching patterns), and Security Posture (RBAC, Encryption).
+           - Tone: Professional, authoritative, visionary.
+        
+        2. **Source Code (PRODUCTION GRADE)**:
+           - Generate a FULLY FUNCTIONAL, MVP version of the core system.
+           - DO NOT generate placeholders like "// logic here" or "TODO". Write the ACTUAL ALGORITHMS and LOGIC.
+           - Create at least 5-7 core files (e.g., api/controller.ts, services/businessLogic.ts, config/db.ts, frontend/Dashboard.tsx, infrastructure/docker-compose.yml).
+           - Use modern, impressive patterns (e.g., Domain-Driven Design, Hexagonal Architecture, React Hooks/Context, Rust Traits).
+           - Code must include error handling, type definitions, and comments explaining complex sections.
+        
+        3. **Blueprint (Architecture Diagram)**:
+           - Generate a complex Mermaid.js chart (C4 Level 2 Container or Level 3 Component diagram).
+           - Show microservices, databases, message queues (Kafka/RabbitMQ), caches (Redis), Load Balancers, and external API integrations.
+           - Use subgraphs to organize the visual layout.
+           - **STRICT MERMAID SYNTAX**: 
+             - Enclose ALL node labels in double quotes. Example: \`id["Label (Detail)"]\`. 
+             - Do NOT use unquoted parentheses inside node definitions.
+             - Ensure all subgraphs are properly closed with \`end\`.
+
         TARGET JOB DESCRIPTION: ${jobDescription.substring(0, 2000)}
         
-        RETURN JSON ONLY matching this schema.
+        RETURN JSON ONLY matching this schema:
         {
-            "id": "project-1",
-            "title": "Name of the Project",
-            "tagline": "A punchy one-liner description",
-            "description": "Short executive summary of what this is.",
-            "techStack": ["React", "Go", "Kafka", "etc"],
+            "id": "project-uuid",
+            "title": "Project Name (e.g. 'Helios: Distributed Neural Sync Engine')",
+            "tagline": "A punchy, impressive one-liner describing the system.",
+            "description": "Executive summary of the project.",
+            "techStack": ["Rust", "GraphQL", "Kubernetes", "Kafka", "React"],
             "features": ["Feature 1", "Feature 2"],
-            "readmeContent": "# Title\\n\\n## Why I built this... (Make it sound personal and strategic)",
+            "readmeContent": "# Title\\n\\n## Architecture... ",
             "fileTree": [
                 { "name": "src", "type": "folder", "children": [{ "name": "App.tsx", "type": "file" }] }
             ],
             "codeFiles": [
-                { "name": "src/App.tsx", "language": "typescript", "content": "..." },
-                { "name": "backend/main.go", "language": "go", "content": "..." }
+                { "name": "src/main.rs", "language": "rust", "content": "fn main() { ... }" },
+                { "name": "k8s/deployment.yaml", "language": "yaml", "content": "..." }
             ],
-            "architectureDiagram": "graph TD\\n  subgraph User Layer\\n    Client[Client App]\\n  end\\n  subgraph Cloud Infrastructure\\n    API[API Gateway]\\n    DB[(Database)]\\n  end\\n  Client --> API\\n  API --> DB" 
+            "architectureDiagram": "graph TB\\n..." 
         }
-        
-        IMPORTANT FOR DIAGRAM:
-        - Use standard Mermaid syntax.
-        - Use subgraphs to group components (e.g., 'subgraph Cloud', 'subgraph Data Layer').
-        - Use specific shapes: [(Database)] for DBs, [Service] for rectangular services, {{Queue}} for queues.
-        - Keep node names short and descriptive.
     `;
 
     let contents: any[] = [];
@@ -214,7 +442,6 @@ export const generateMagnumOpus = async (resumeData: FileData | string, jobDescr
     }
     contents.push({ text: instruction });
 
-    // Primary Attempt: Pro Model
     try {
         return await executeWithRetry(async (ai) => {
             const response = await ai.models.generateContent({
@@ -222,13 +449,12 @@ export const generateMagnumOpus = async (resumeData: FileData | string, jobDescr
                 contents: { parts: contents },
                 config: {
                     responseMimeType: 'application/json',
-                    thinkingConfig: { thinkingBudget: 8000 } // Reduced budget to save tokens
+                    thinkingConfig: { thinkingBudget: 16000 } 
                 }
             });
             return JSON.parse(cleanJson(response.text));
         });
     } catch (e: any) {
-        // Fallback: Flash Model (If Pro quota exceeded)
         if (isRateLimitError(e)) {
             console.warn("Magnum Opus: Pro model exhausted. Falling back to Flash.");
             return await executeWithRetry(async (ai) => {
@@ -237,7 +463,6 @@ export const generateMagnumOpus = async (resumeData: FileData | string, jobDescr
                     contents: { parts: contents },
                     config: {
                         responseMimeType: 'application/json'
-                        // No thinking config for Flash to maximize success rate
                     }
                 });
                 return JSON.parse(cleanJson(response.text));
@@ -246,10 +471,6 @@ export const generateMagnumOpus = async (resumeData: FileData | string, jobDescr
         throw e;
     }
 };
-
-// ... existing code ...
-
-// --- PROOF OF WORK (PROJECT PROTOCOL) ---
 
 export const generateWorkChallenge = async (company: string, role: string): Promise<WorkChallenge> => {
     const runGeneration = async (model: string, useThinking: boolean) => {
@@ -288,7 +509,6 @@ export const gradeWorkChallenge = async (challenge: WorkChallenge, solution: str
             Return JSON: { "challengeId": "${challenge.id}", "userSolution": "...", "grade": 85, "feedback": "...", "strengths": [], "weaknesses": [], "emailHook": "..." }
         `;
 
-        // Try Flash first for grading to save Pro quota for creation
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash', 
             contents: prompt,
@@ -297,26 +517,6 @@ export const gradeWorkChallenge = async (challenge: WorkChallenge, solution: str
 
         return JSON.parse(cleanJson(response.text));
     });
-};
-
-const extractSources = (response: any): GroundingSource[] => {
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    return chunks
-        .filter((c: any) => c.web?.uri && c.web?.title)
-        .map((c: any) => ({
-            title: c.web.title,
-            uri: c.web.uri
-        }));
-};
-
-const extractMapLocations = (response: any): MapLocation[] => {
-    const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-    return chunks
-        .filter((c: any) => c.maps?.uri)
-        .map((c: any) => ({
-            title: c.maps.placeAnswerSources?.reviewSnippets?.[0]?.reviewText?.substring(0, 50) + "..." || c.maps.title || "Location",
-            uri: c.maps.uri
-        }));
 };
 
 export const decodeAudioData = (base64Data: string, ctx: AudioContext) => {
@@ -402,6 +602,7 @@ export const solveCaseStudy = async (problem: string, role: string): Promise<War
                 PROBLEM: "${problem}"
                 ROLE: ${role}
                 Generate valid Mermaid.js diagram code.
+                **IMPORTANT SYNTAX RULE**: Quote all node labels that contain special characters or spaces. Example: A["Client (Mobile)"].
                 RETURN JSON: { "summary": "...", "keyConsiderations": [], "diagramType": "...", "diagramCode": "graph TD\\n..." }
             `;
             const response = await ai.models.generateContent({
@@ -487,27 +688,6 @@ export const simulateTribunal = async (resumeText: string, company: string, role
         });
 
         return JSON.parse(cleanJson(response.text));
-    });
-};
-
-export const generateCareerResonance = async (urls: string[], currentRole: string): Promise<ResonanceAnalysis> => {
-    return executeWithRetry(async (ai) => {
-        const prompt = `
-            Act as Career Physicist. Analyze URLs: ${urls.join(', ')} and Role: ${currentRole}.
-            Identify 6 "Dark Matter Opportunities" (non-obvious roles).
-            Return JSON: { "coreIdentity": "...", "marketEntropy": 0.8, "opportunities": [{ "id": "1", "role": "...", "industry": "...", "resonanceScore": 95, "hiddenPotential": "...", "coordinates": { "x": 10, "y": 40, "z": -20 }, "trajectory": "accelerating", "skills": [...] }] }
-        `;
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash', 
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }] 
-            }
-        });
-
-        const text = cleanJson(response.text);
-        return JSON.parse(text);
     });
 };
 
@@ -795,107 +975,3 @@ export const generateCompanyDossier = async (company: string) => {
 };
 
 export const createInterviewContext = (ctx: string, file: any) => `Roleplay interview for: ${ctx}`;
-
-export const getMarketInsights = async (sector: string) => {
-    return executeWithRetry(async (ai) => {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `Market trends for ${sector}.`,
-            config: { tools: [{ googleSearch: {} }] }
-        });
-        return response.text;
-    });
-};
-
-export const findLatestOpportunities = async (role: string, loc: string, visaStatus: string = 'Citizen/PR') => {
-    return executeWithRetry(async (ai) => {
-        // Construct Visa-Specific Constraints
-        let visaContext = '';
-        if (visaStatus.includes('Student 500')) {
-            visaContext = 'MUST allow "student visa", "casual", "part-time", "contract", or "internship". Look for "immediate start" or "urgent". Max 20-24 hours/week friendly is a plus.';
-        } else if (visaStatus.includes('Graduate 485')) {
-            visaContext = 'Must accept "Graduate Visa 485". Full-time entry-level roles allowed.';
-        } else if (visaStatus.includes('Sponsorship')) {
-            visaContext = 'Must explicitly mention "Visa Sponsorship" or "TSS 482" available.';
-        }
-
-        const prompt = `
-            FIND REAL JOB OPENINGS.
-            ROLE: ${role}
-            LOCATION: ${loc}
-            VISA STATUS: ${visaStatus}
-            ${visaContext}
-
-            SEARCH INSTRUCTIONS:
-            1. Search for at least 30 open roles to ensure we get ~25 valid results.
-            2. Prioritize "Company Career Pages" (Direct ATS links like Greenhouse, Lever, Ashby) over aggregators (Indeed/Seek/LinkedIn) to ensure validity.
-            3. Look for "Hidden Gems": < 10 applicants, posted < 24h ago, startups, direct email applications.
-            4. If the exact link is behind a login wall, provide the main Career Page URL for that company instead.
-            5. DO NOT hallucinate job IDs or links. If you find a job, use the real URL found in search grounding.
-
-            RETURN JSON ARRAY (Min 25 items):
-            [
-              {
-                "id": "unique_string",
-                "title": "Role Title",
-                "company": "Company Name",
-                "url": "Valid URL (prioritize direct company site)",
-                "timestamp": "e.g. '2 hours ago', 'Today'",
-                "isNew": true/false
-              }
-            ]
-        `;
-
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: prompt,
-            config: { 
-                tools: [{ googleSearch: {} }]
-            }
-        });
-        try { 
-            const res = JSON.parse(cleanJson(response.text));
-            // Ensure array and IDs to prevent rendering errors
-            if (!Array.isArray(res)) return [];
-            return res.map((job: any) => ({
-                ...job,
-                id: job.id || `job-${Math.random().toString(36).substr(2, 9)}`,
-                title: job.title || 'Untitled Opportunity',
-                company: job.company || 'Unknown Company',
-                url: job.url || '#',
-                timestamp: job.timestamp || 'Just now'
-            }));
-        } 
-        catch { return []; }
-    });
-};
-
-export const editHeadshot = async (b64: string, mime: string, prompt: string) => {
-    return editImageWithNano(b64, mime, prompt);
-};
-
-export const verifyCredential = async (name: string, issuer: string) => {
-    return executeWithRetry(async (ai) => {
-        const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: `Verify credential ${name} from ${issuer}.`,
-            config: { tools: [{ googleSearch: {} }] }
-        });
-        return response.text;
-    });
-};
-
-export const generateVideoPitch = async (prompt: string) => {
-    return generateVeoVideo(prompt);
-};
-
-export const testConnection = async () => {
-    try {
-        await executeWithRetry(async (ai) => {
-            await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: 'ping' });
-        });
-        return { success: true, message: "Gemini Uplink Active" };
-    } catch (e: any) {
-        return { success: false, message: e.message };
-    }
-};

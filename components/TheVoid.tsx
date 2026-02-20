@@ -4,21 +4,15 @@ import { Float, Stars, Text, Trail } from '@react-three/drei';
 import { AppRoute } from '../types';
 import * as THREE from 'three';
 
-// Extend JSX.IntrinsicElements to include React Three Fiber elements
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      group: any;
-      mesh: any;
-      boxGeometry: any;
-      meshStandardMaterial: any;
-      ambientLight: any;
-      pointLight: any;
-      gridHelper: any;
-      fog: any;
-    }
-  }
-}
+// Define R3F elements as any to bypass IntrinsicElements check failures
+const Group: any = 'group';
+const Mesh: any = 'mesh';
+const BoxGeometry: any = 'boxGeometry';
+const MeshStandardMaterial: any = 'meshStandardMaterial';
+const AmbientLight: any = 'ambientLight';
+const PointLight: any = 'pointLight';
+const GridHelper: any = 'gridHelper';
+const Fog: any = 'fog';
 
 interface TheVoidProps {
   onNavigate: (route: AppRoute) => void;
@@ -58,17 +52,17 @@ const Monolith: React.FC<MonolithProps> = ({
   });
 
   return (
-    <group position={position}>
+    <Group position={position}>
       <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
         <Trail width={2} length={4} color={isActive ? "#E53E3E" : "#333"} attenuation={(t) => t * t}>
-            <mesh
+            <Mesh
               ref={meshRef}
-              onClick={(e) => { e.stopPropagation(); onClick(route); }}
+              onClick={(e: any) => { e.stopPropagation(); onClick(route); }}
               onPointerOver={() => setHover(true)}
               onPointerOut={() => setHover(false)}
             >
-              <boxGeometry args={[1, 3, 1]} />
-              <meshStandardMaterial 
+              <BoxGeometry args={[1, 3, 1]} />
+              <MeshStandardMaterial 
                 color={isActive ? "#E53E3E" : hovered ? "#555" : "#111"} 
                 emissive={isActive ? "#E53E3E" : "#000"}
                 emissiveIntensity={isActive ? 2 : 0}
@@ -76,7 +70,7 @@ const Monolith: React.FC<MonolithProps> = ({
                 roughness={0.2}
                 wireframe={!isActive && !hovered}
               />
-            </mesh>
+            </Mesh>
         </Trail>
         
         <Text
@@ -90,7 +84,7 @@ const Monolith: React.FC<MonolithProps> = ({
           {label.toUpperCase()}
         </Text>
       </Float>
-    </group>
+    </Group>
   );
 };
 
@@ -108,15 +102,15 @@ const Scene = ({ onNavigate, activeRoute }: TheVoidProps) => {
 
   return (
     <>
-      <ambientLight intensity={0.2} />
-      <pointLight position={[10, 10, 10]} intensity={1.5} color="#E53E3E" />
-      <pointLight position={[-10, -10, -10]} intensity={0.5} color="#444" />
+      <AmbientLight intensity={0.2} />
+      <PointLight position={[10, 10, 10]} intensity={1.5} color="#E53E3E" />
+      <PointLight position={[-10, -10, -10]} intensity={0.5} color="#444" />
       
       <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
       
       {/* Background Grid Floor */}
-      <gridHelper args={[100, 100, 0x333333, 0x111111]} position={[0, -10, 0]} />
-      <gridHelper args={[100, 100, 0x333333, 0x111111]} position={[0, 10, 0]} rotation={[Math.PI, 0, 0]} />
+      <GridHelper args={[100, 100, 0x333333, 0x111111]} position={[0, -10, 0]} />
+      <GridHelper args={[100, 100, 0x333333, 0x111111]} position={[0, 10, 0]} rotation={[Math.PI, 0, 0]} />
 
       {nodes.map((node, i) => (
         <Monolith
@@ -139,7 +133,7 @@ const TheVoid: React.FC<TheVoidProps> = (props) => {
         <div className="w-full h-full pointer-events-auto">
             <Canvas camera={{ position: [0, 0, 8], fov: 60 }}>
                 <Scene {...props} />
-                <fog attach="fog" args={['#050505', 5, 30]} />
+                <Fog attach="fog" args={['#050505', 5, 30]} />
             </Canvas>
         </div>
     </div>

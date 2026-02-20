@@ -1,10 +1,10 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { AppRoute, JobOpportunity, CareerStage } from '../types';
+import { AppRoute, JobOpportunity, CareerStage, UserProfile } from '../types';
 import QuickTips from './QuickTips';
 import { getMarketInsights, findLatestOpportunities, generateDeepCareerStrategy } from '../services/geminiService';
-import { Activity, TrendingUp, Award, ArrowRight, Radar, Radio, ExternalLink, MapPin, Briefcase, AlertTriangle, RefreshCw, Cpu, Globe, Crosshair, Terminal, MessageSquare, BrainCircuit, Sparkles, ChevronRight, CheckCircle2, Target, Zap, Wifi, ShieldCheck } from 'lucide-react';
+import { Activity, TrendingUp, Award, ArrowRight, Radar, Radio, ExternalLink, MapPin, Briefcase, AlertTriangle, RefreshCw, Cpu, Globe, Crosshair, Terminal, MessageSquare, BrainCircuit, Sparkles, ChevronRight, CheckCircle2, Target, Zap, Wifi, ShieldCheck, Ghost, Flame } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 
 interface DashboardProps {
@@ -29,18 +29,82 @@ const VISA_TYPES = [
     { value: 'WHV', label: 'Working Holiday' }
 ];
 
+const MissionBriefing: React.FC<{ 
+    user: UserProfile | null; 
+    onStageChange: (stage: CareerStage) => void 
+}> = ({ user, onStageChange }) => {
+    const currentStageIdx = STAGES.findIndex(s => s.id === (user?.currentStage || 'preparation'));
+    // Fallback to 0 if -1, though default 'preparation' handles it usually.
+    const safeIndex = currentStageIdx === -1 ? 0 : currentStageIdx;
+    
+    const nextStage = STAGES[safeIndex + 1];
+    const activeStage = STAGES[safeIndex];
+
+    return (
+        <div className="glass-card p-0 rounded-3xl overflow-hidden mb-8 border-l-4 border-l-exo-primary animate-slide-up relative">
+            <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,192,0,0.05)_25%,transparent_25%,transparent_50%,rgba(255,192,0,0.05)_50%,rgba(255,192,0,0.05)_75%,transparent_75%,transparent_100%)] bg-[size:40px_40px] opacity-20 pointer-events-none"></div>
+            
+            <div className="p-8 flex flex-col md:flex-row gap-8 items-start md:items-center relative z-10">
+                <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                        <span className="px-2 py-1 bg-exo-primary/10 text-exo-primary text-[10px] font-bold uppercase tracking-widest rounded border border-exo-primary/20">
+                            Active Protocol
+                        </span>
+                        <span className="text-gray-500 text-xs font-mono uppercase tracking-widest">
+                            Phase {safeIndex + 1} of {STAGES.length}
+                        </span>
+                    </div>
+                    <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-2 uppercase tracking-wide">
+                        {activeStage.label}
+                    </h2>
+                    <p className="text-gray-400 text-sm max-w-xl leading-relaxed">
+                        {activeStage.desc}. The system has reconfigured your navigation to prioritize tools for this phase. Execute recommended actions to proceed.
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-3 min-w-[200px]">
+                    {nextStage && (
+                        <button 
+                           onClick={() => onStageChange(nextStage.id)}
+                           className="group flex items-center justify-between p-4 bg-white/5 hover:bg-exo-primary/10 border border-white/10 hover:border-exo-primary/30 rounded-xl transition-all"
+                        >
+                            <div className="text-left">
+                                <span className="block text-[10px] text-gray-500 uppercase font-bold group-hover:text-exo-primary transition-colors">Advance To</span>
+                                <span className="block text-sm font-bold text-white">{nextStage.label}</span>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-exo-primary transform group-hover:translate-x-1 transition-all" />
+                        </button>
+                    )}
+                    
+                    <div className="flex gap-1">
+                        {STAGES.map((s, i) => (
+                            <button 
+                              key={s.id}
+                              onClick={() => onStageChange(s.id)}
+                              className={`h-1 flex-1 rounded-full transition-all ${i <= safeIndex ? 'bg-exo-primary shadow-[0_0_10px_#FFC000]' : 'bg-gray-800 hover:bg-gray-700'}`}
+                              title={s.label}
+                            />
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
   const { user, updateUser } = useAuth();
   const [marketTrends, setMarketTrends] = useState<string>('');
   const [loadingTrends, setLoadingTrends] = useState(true);
   
   // Real-time radar state
-  const [liveJobs, setLiveJobs] = useState<JobOpportunity[]>([]);
+  const [liveJobs, setLiveJobs] = useState<any[]>([]);
   const [scanning, setScanning] = useState(false);
   const [location, setLocation] = useState('Remote');
   const [targetRole, setTargetRole] = useState(user?.title === 'Candidate' ? 'Software Engineer' : user?.title || 'Engineer');
   const [visaStatus, setVisaStatus] = useState('Citizen/PR');
   const [radarError, setRadarError] = useState<string | null>(null);
+  const [scanMode, setScanMode] = useState<'standard' | 'stealth'>('standard');
 
   // Strategy Node State
   const [strategyQuery, setStrategyQuery] = useState('');
@@ -75,7 +139,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
       setLiveJobs([]); 
 
       try {
-          const opportunities = await findLatestOpportunities(targetRole, location, visaStatus);
+          const opportunities = await findLatestOpportunities(targetRole, location, visaStatus, scanMode);
           
           if (opportunities.length > 0) {
             setLiveJobs(opportunities);
@@ -88,7 +152,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
       } finally {
           setScanning(false);
       }
-  }, [targetRole, location, visaStatus]);
+  }, [targetRole, location, visaStatus, scanMode]);
 
   const handleDeepStrategy = async () => {
       if (!strategyQuery) return;
@@ -108,63 +172,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
       updateUser({ currentStage: newStage });
   };
 
-  const MissionBriefing = () => {
-      const currentStageIdx = STAGES.findIndex(s => s.id === user?.currentStage);
-      const nextStage = STAGES[currentStageIdx + 1];
-      const activeStage = STAGES[currentStageIdx] || STAGES[0];
-
-      return (
-          <div className="glass-card p-0 rounded-3xl overflow-hidden mb-8 border-l-4 border-l-exo-primary animate-slide-up relative">
-              <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,192,0,0.05)_25%,transparent_25%,transparent_50%,rgba(255,192,0,0.05)_50%,rgba(255,192,0,0.05)_75%,transparent_75%,transparent_100%)] bg-[size:40px_40px] opacity-20 pointer-events-none"></div>
-              
-              <div className="p-8 flex flex-col md:flex-row gap-8 items-start md:items-center relative z-10">
-                  <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                          <span className="px-2 py-1 bg-exo-primary/10 text-exo-primary text-[10px] font-bold uppercase tracking-widest rounded border border-exo-primary/20">
-                              Active Protocol
-                          </span>
-                          <span className="text-gray-500 text-xs font-mono uppercase tracking-widest">
-                              Phase {currentStageIdx + 1} of {STAGES.length}
-                          </span>
-                      </div>
-                      <h2 className="text-3xl md:text-4xl font-display font-bold text-white mb-2 uppercase tracking-wide">
-                          {activeStage.label}
-                      </h2>
-                      <p className="text-gray-400 text-sm max-w-xl leading-relaxed">
-                          {activeStage.desc}. The system has reconfigured your navigation to prioritize tools for this phase. Execute recommended actions to proceed.
-                      </p>
-                  </div>
-
-                  <div className="flex flex-col gap-3 min-w-[200px]">
-                      {nextStage && (
-                          <button 
-                             onClick={() => handleStageChange(nextStage.id)}
-                             className="group flex items-center justify-between p-4 bg-white/5 hover:bg-exo-primary/10 border border-white/10 hover:border-exo-primary/30 rounded-xl transition-all"
-                          >
-                              <div className="text-left">
-                                  <span className="block text-[10px] text-gray-500 uppercase font-bold group-hover:text-exo-primary transition-colors">Advance To</span>
-                                  <span className="block text-sm font-bold text-white">{nextStage.label}</span>
-                              </div>
-                              <ChevronRight className="w-4 h-4 text-gray-500 group-hover:text-exo-primary transform group-hover:translate-x-1 transition-all" />
-                          </button>
-                      )}
-                      
-                      <div className="flex gap-1">
-                          {STAGES.map((s, i) => (
-                              <button 
-                                key={s.id}
-                                onClick={() => handleStageChange(s.id)}
-                                className={`h-1 flex-1 rounded-full transition-all ${i <= currentStageIdx ? 'bg-exo-primary shadow-[0_0_10px_#FFC000]' : 'bg-gray-800 hover:bg-gray-700'}`}
-                                title={s.label}
-                              />
-                          ))}
-                      </div>
-                  </div>
-              </div>
-          </div>
-      );
-  };
-
   const getPseudoMatch = (id: string | undefined) => {
       if (!id) return 85;
       // Deterministic pseudo-random number based on ID string
@@ -173,6 +180,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
           hash = id.charCodeAt(i) + ((hash << 5) - hash);
       }
       return 70 + Math.abs(hash % 29); // 70% - 99%
+  };
+
+  const getVisaColor = (status: string) => {
+      if (status.includes('Likely') || status.includes('Sponsorship')) return 'bg-green-500/20 text-green-400 border-green-500/30';
+      if (status.includes('Citizen') || status.includes('No')) return 'bg-red-500/20 text-red-400 border-red-500/30';
+      return 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
   return (
@@ -203,13 +216,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
               ) : (
                   <div className={`w-2 h-2 rounded-full ${radarError ? 'bg-exo-error' : 'bg-exo-success shadow-[0_0_10px_#10b981]'}`}></div>
               )}
-              {radarError ? 'SYSTEM ALERT' : scanning ? 'SCANNING...' : 'NETWORK ONLINE'}
+              {radarError ? 'SYSTEM ALERT' : scanning ? (scanMode === 'stealth' ? 'DEEP SCAN...' : 'SCANNING...') : 'NETWORK ONLINE'}
            </div>
            <p className="text-[10px] text-gray-500 font-mono tracking-widest">SECURE UPLINK ESTABLISHED</p>
         </div>
       </div>
 
-      <MissionBriefing />
+      <MissionBriefing user={user} onStageChange={handleStageChange} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
         
@@ -241,20 +254,36 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
         </div>
 
         {/* --- LIVE INTERCEPT RADAR (ENHANCED) --- */}
-        <div className="md:col-span-2 glass-card p-0 relative flex flex-col group rounded-3xl overflow-hidden animate-slide-up h-[650px] border border-white/10" style={{ animationDelay: '100ms' }}>
+        <div className={`md:col-span-2 glass-card p-0 relative flex flex-col group rounded-3xl overflow-hidden animate-slide-up h-[650px] border ${scanMode === 'stealth' ? 'border-purple-500/30' : 'border-white/10'}`} style={{ animationDelay: '100ms' }}>
            {/* Header Controls */}
-           <div className="border-b border-white/5 p-4 flex flex-col sm:flex-row gap-4 items-center justify-between bg-black/60 backdrop-blur-md z-20">
+           <div className={`border-b p-4 flex flex-col sm:flex-row gap-4 items-center justify-between bg-black/60 backdrop-blur-md z-20 ${scanMode === 'stealth' ? 'border-purple-500/20' : 'border-white/5'}`}>
                 <div className="flex items-center gap-3 w-full sm:w-auto">
                     <div className="relative">
-                        <div className={`w-3 h-3 rounded-full ${scanning ? 'bg-yellow-500' : 'bg-red-500'} animate-pulse shadow-[0_0_10px_currentColor]`}></div>
-                        <div className={`absolute inset-0 w-3 h-3 rounded-full ${scanning ? 'bg-yellow-500' : 'bg-red-500'} animate-ping opacity-75`}></div>
+                        <div className={`w-3 h-3 rounded-full ${scanning ? 'bg-yellow-500' : scanMode === 'stealth' ? 'bg-purple-500' : 'bg-red-500'} animate-pulse shadow-[0_0_10px_currentColor]`}></div>
+                        <div className={`absolute inset-0 w-3 h-3 rounded-full ${scanning ? 'bg-yellow-500' : scanMode === 'stealth' ? 'bg-purple-500' : 'bg-red-500'} animate-ping opacity-75`}></div>
                     </div>
                     <h3 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2 whitespace-nowrap">
-                        <Radar className="w-4 h-4 text-exo-primary" /> Live Intercept
+                        <Radar className={`w-4 h-4 ${scanMode === 'stealth' ? 'text-purple-400' : 'text-exo-primary'}`} /> 
+                        {scanMode === 'stealth' ? 'Stealth Intercept' : 'Live Intercept'}
                     </h3>
                 </div>
                 
                 <div className="flex flex-wrap gap-2 w-full justify-end">
+                    <div className="flex bg-black/50 border border-white/10 rounded-lg p-1 mr-2">
+                        <button 
+                            onClick={() => setScanMode('standard')}
+                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all ${scanMode === 'standard' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-white'}`}
+                        >
+                            Standard
+                        </button>
+                        <button 
+                            onClick={() => setScanMode('stealth')}
+                            className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wide transition-all flex items-center gap-1 ${scanMode === 'stealth' ? 'bg-purple-600/20 text-purple-300 border border-purple-500/30' : 'text-gray-500 hover:text-purple-300'}`}
+                        >
+                            <Ghost className="w-3 h-3" /> Stealth
+                        </button>
+                    </div>
+
                     <div className="flex-1 sm:flex-none min-w-[140px] bg-black/50 border border-white/10 rounded-lg flex items-center px-3 py-2 focus-within:border-exo-primary/50 transition-colors">
                         <Target className="w-3 h-3 text-gray-500 mr-2 flex-shrink-0" />
                         <input 
@@ -288,7 +317,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
                     <button 
                         onClick={handleScan}
                         disabled={scanning}
-                        className="p-2 bg-exo-primary hover:bg-white text-black rounded-lg transition-colors flex-shrink-0 shadow-lg w-full sm:w-auto flex items-center justify-center"
+                        className={`p-2 hover:bg-white text-black rounded-lg transition-colors flex-shrink-0 shadow-lg w-full sm:w-auto flex items-center justify-center ${scanMode === 'stealth' ? 'bg-purple-500' : 'bg-exo-primary'}`}
                     >
                         <RefreshCw className={`w-4 h-4 ${scanning ? 'animate-spin' : ''}`} />
                     </button>
@@ -305,24 +334,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
                     {/* Sweep Animation */}
                     {scanning && (
                         <div className="absolute inset-0 pointer-events-none">
-                            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] bg-gradient-to-r from-transparent via-exo-primary/10 to-transparent animate-[spin_3s_linear_infinite] rounded-full opacity-30 origin-center" style={{ clipPath: 'polygon(50% 50%, 100% 0, 100% 100%)' }}></div>
+                            <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[150%] h-[150%] bg-gradient-to-r from-transparent ${scanMode === 'stealth' ? 'via-purple-500/10' : 'via-exo-primary/10'} to-transparent animate-[spin_3s_linear_infinite] rounded-full opacity-30 origin-center`} style={{ clipPath: 'polygon(50% 50%, 100% 0, 100% 100%)' }}></div>
                         </div>
                     )}
                     
                     {/* Center Point */}
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
-                        <div className={`w-2 h-2 bg-exo-primary rounded-full shadow-[0_0_10px_#FFC000] z-10`}></div>
-                        <div className={`absolute w-64 h-64 rounded-full border border-exo-primary/10 ${scanning ? 'animate-[ping_2s_linear_infinite]' : ''}`}></div>
+                        <div className={`w-2 h-2 ${scanMode === 'stealth' ? 'bg-purple-500 shadow-[0_0_10px_#A855F7]' : 'bg-exo-primary shadow-[0_0_10px_#FFC000]'} rounded-full z-10`}></div>
+                        <div className={`absolute w-64 h-64 rounded-full border ${scanMode === 'stealth' ? 'border-purple-500/10' : 'border-exo-primary/10'} ${scanning ? 'animate-[ping_2s_linear_infinite]' : ''}`}></div>
                     </div>
 
                     {/* Stats Overlay */}
                     <div className="absolute bottom-4 left-4 right-4 bg-black/60 backdrop-blur-sm p-3 rounded-lg border border-white/5">
                         <div className="flex justify-between text-[9px] font-mono text-gray-400 uppercase mb-2">
                             <span>Status: {scanning ? 'SCANNING' : radarError ? 'OFFLINE' : 'ACTIVE'}</span>
-                            <span className="text-exo-primary">{liveJobs.length} TARGETS</span>
+                            <span className={scanMode === 'stealth' ? 'text-purple-400' : 'text-exo-primary'}>{liveJobs.length} TARGETS</span>
                         </div>
                         <div className="h-1 w-full bg-gray-800 rounded-full overflow-hidden">
-                            <div className={`h-full bg-exo-primary transition-all duration-1000 ${scanning ? 'w-full animate-pulse' : 'w-1/3'}`}></div>
+                            <div className={`h-full ${scanMode === 'stealth' ? 'bg-purple-500' : 'bg-exo-primary'} transition-all duration-1000 ${scanning ? 'w-full animate-pulse' : 'w-1/3'}`}></div>
                         </div>
                     </div>
                 </div>
@@ -337,26 +366,35 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
                         </div>
                     ) : liveJobs.length === 0 && !scanning ? (
                         <div className="h-full flex flex-col items-center justify-center text-gray-700 opacity-50">
-                            <Radio className="w-16 h-16 mb-4" />
-                            <p className="text-xs font-mono uppercase tracking-widest">Awaiting Signal</p>
+                            {scanMode === 'stealth' ? <Ghost className="w-16 h-16 mb-4" /> : <Radio className="w-16 h-16 mb-4" />}
+                            <p className="text-xs font-mono uppercase tracking-widest">{scanMode === 'stealth' ? 'Awaiting Stealth Parameters' : 'Awaiting Signal'}</p>
                         </div>
                     ) : (
                         liveJobs.map((job, idx) => {
                             const matchScore = getPseudoMatch(job.id);
+                            const isStealthHit = scanMode === 'stealth' && job.isNew;
+                            
                             return (
-                                <div key={job.id || idx} className="group relative bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl p-4 transition-all duration-300 animate-slide-in-right overflow-hidden" style={{ animationDelay: `${idx * 100}ms` }}>
+                                <div key={job.id || idx} className={`group relative bg-white/5 hover:bg-white/10 border ${isStealthHit ? 'border-purple-500/30 bg-purple-900/10' : 'border-white/5'} rounded-xl p-4 transition-all duration-300 animate-slide-in-right overflow-hidden`} style={{ animationDelay: `${idx * 100}ms` }}>
                                     {/* Signal Bar */}
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-exo-primary to-transparent opacity-50 group-hover:opacity-100 transition-opacity"></div>
+                                    <div className={`absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b ${isStealthHit ? 'from-purple-500' : 'from-exo-primary'} to-transparent opacity-50 group-hover:opacity-100 transition-opacity`}></div>
                                     
                                     <div className="flex justify-between items-start gap-4 relative z-10">
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2 mb-1">
-                                                <h4 className="text-sm font-bold text-white truncate group-hover:text-exo-primary transition-colors">{job.title}</h4>
-                                                {matchScore > 90 && (
-                                                    <span className="text-[9px] bg-exo-primary text-black px-1.5 rounded font-bold uppercase tracking-wider">Hot</span>
+                                                <h4 className="text-sm font-bold text-white truncate group-hover:text-exo-primary transition-colors max-w-[200px]">{job.title}</h4>
+                                                {isStealthHit && (
+                                                    <span className="text-[9px] bg-purple-600 text-white px-1.5 rounded font-bold uppercase tracking-wider flex items-center gap-1">
+                                                        <Ghost className="w-3 h-3" /> Stealth
+                                                    </span>
                                                 )}
-                                                {job.isNew && (
+                                                {job.isNew && !isStealthHit && (
                                                     <span className="text-[9px] bg-blue-500 text-white px-1.5 rounded font-bold uppercase tracking-wider">New</span>
+                                                )}
+                                                {job.visaStatus !== 'Unknown' && (
+                                                    <span className={`text-[9px] px-1.5 rounded font-bold uppercase tracking-wider flex items-center gap-1 border ${getVisaColor(job.visaStatus)}`}>
+                                                        <ShieldCheck className="w-3 h-3" /> {job.visaStatus}
+                                                    </span>
                                                 )}
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-gray-400 font-mono mb-2">
@@ -367,13 +405,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onNavigate, isVisible }) => {
                                             
                                             {/* Pseudo Metrics */}
                                             <div className="flex items-center gap-4 mt-3">
-                                                <div className="flex items-center gap-1.5" title="Signal Match">
+                                                <div className="flex items-center gap-1.5" title="High Precision Match">
                                                     <Wifi className={`w-3 h-3 ${matchScore > 85 ? 'text-green-500' : 'text-yellow-500'}`} />
-                                                    <span className={`text-[10px] font-bold ${matchScore > 85 ? 'text-green-500' : 'text-yellow-500'}`}>{matchScore}% MATCH</span>
+                                                    <span className={`text-[10px] font-bold ${matchScore > 85 ? 'text-green-500' : 'text-yellow-500'}`}>VERIFIED MATCH</span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5 text-gray-500">
                                                     <Globe className="w-3 h-3" />
-                                                    <span className="text-[10px] uppercase">{location}</span>
+                                                    <span className="text-[10px] uppercase truncate max-w-[100px]">{job.location || location}</span>
                                                 </div>
                                             </div>
                                         </div>

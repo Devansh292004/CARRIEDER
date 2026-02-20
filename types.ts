@@ -273,7 +273,7 @@ export interface TribunalSession {
     verdictReason: string;
 }
 
-// Resonance Engine Types
+// Resonance Engine Types (UPDATED)
 export interface ResonanceSkill {
     name: string;
     category: 'harmonic' | 'dissonant' | 'emergent'; // Harmonic = strong match, Dissonant = blocker, Emergent = future need
@@ -283,18 +283,24 @@ export interface ResonanceSkill {
 export interface ResonanceOpportunity {
     id: string;
     role: string;
-    industry: string;
-    resonanceScore: number; // 0-100 (z-index/proximity)
-    hiddenPotential: string; // Why this unconsidered role fits
-    skills: ResonanceSkill[];
+    companyType: string; // "Enterprise", "Series A", "Agency"
+    matchScore: number; // 0-100
+    salaryRange: string; // "$150k - $220k"
+    timeToRole: string; // "3 months"
+    skillsGap: string[];
+    skillsMatch: string[];
+    marketDemand: 'Explosive' | 'High' | 'Stable' | 'Declining';
+    rationale: string;
+    actionPlan: string[];
     coordinates: { x: number; y: number; z: number }; // 3D position
-    trajectory: 'stable' | 'accelerating' | 'collapsing';
+    type: 'Lateral' | 'Promotion' | 'Pivot' | 'Moonshot';
 }
 
 export interface ResonanceAnalysis {
-    coreIdentity: string;
+    archetype: string;
+    keyStrengths: string[];
+    marketValue: string;
     opportunities: ResonanceOpportunity[];
-    marketEntropy: number; // Volatility factor
 }
 
 // Networking CRM Types
